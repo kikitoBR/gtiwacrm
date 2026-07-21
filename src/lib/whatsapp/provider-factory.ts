@@ -15,11 +15,11 @@ export function getWhatsAppProvider(config: any): WhatsAppProvider {
       throw new Error('Evolution API URL is not configured.')
     }
     const decryptedApiKey = config.evolution_api_key ? decrypt(config.evolution_api_key) : ''
-    const decryptedInstanceName = config.evolution_instance_name ? decrypt(config.evolution_instance_name) : ''
+    const instanceName = config.evolution_instance_name || ''
     return new EvolutionWhatsAppProvider(
       config.evolution_api_url,
       decryptedApiKey,
-      decryptedInstanceName
+      instanceName
     )
   }
 
