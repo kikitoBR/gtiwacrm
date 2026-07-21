@@ -180,7 +180,7 @@ export async function POST(request: Request) {
       }
 
       const messageId = key.id
-      const timestamp = data.messageTimestamp || messageData.messageTimestamp || Math.floor(Date.now() / 1000)
+      const timestamp = item.messageTimestamp || data.messageTimestamp || Math.floor(Date.now() / 1000)
 
       // Verificar se mensagem já foi registrada
       const { data: existingMsg } = await supabaseAdmin()
