@@ -21,14 +21,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import {
-  sendTextMessage,
-  sendTemplateMessage,
-  sendMediaMessage,
-  sendInteractiveButtons,
-  sendInteractiveList,
-  type MediaKind,
-} from '@/lib/whatsapp/meta-api';
+import { type MediaKind } from '@/lib/whatsapp/meta-api';
+import { getWhatsAppProvider } from '@/lib/whatsapp/provider-factory';
 import {
   validateInteractivePayload,
   interactivePayloadPreviewText,
@@ -262,10 +256,11 @@ export async function sendMessageToConversation(
     );
   }
 
-  const accessToken = decrypt(config.access_token);
+  const provider = getWhatsAppProvider(config);
 
   // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
-  if (isLegacyFormat(config.access_token)) {
+  if (config.provider_type !== 'evolution' && config.access_token && isLegacyFormat(config.access_token)) {
+    const accessToken = decrypt(config.access_token);
     void db
       .from('whatsapp_config')
       .update({ access_token: encrypt(accessToken) })
@@ -331,23 +326,18 @@ export async function sendMessageToConversation(
 
   const attempt = async (phone: string): Promise<string> => {
     if (messageType === 'template') {
-      const result = await sendTemplateMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      const result = await provider.sendTemplateMessage({
         to: phone,
         templateName: templateName!,
         language: templateLanguage || 'en_US',
         template: templateRow ?? undefined,
         messageParams: templateMessageParams ?? undefined,
-        params: templateParams || [],
         contextMessageId,
       });
       return result.messageId;
     }
     if (isMediaKind) {
-      const result = await sendMediaMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      const result = await provider.sendMediaMessage({
         to: phone,
         kind: messageType as MediaKind,
         link: mediaUrl!,
@@ -360,9 +350,7 @@ export async function sendMessageToConversation(
     if (messageType === 'interactive') {
       const p = interactivePayload!;
       if (p.kind === 'buttons') {
-        const result = await sendInteractiveButtons({
-          phoneNumberId: config.phone_number_id,
-          accessToken,
+        const result = await provider.sendInteractiveButtons({
           to: phone,
           bodyText: p.body,
           headerText: p.header || undefined,
@@ -372,9 +360,7 @@ export async function sendMessageToConversation(
         });
         return result.messageId;
       }
-      const result = await sendInteractiveList({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      const result = await provider.sendInteractiveList({
         to: phone,
         bodyText: p.body,
         buttonLabel: p.button_label,
@@ -385,9 +371,7 @@ export async function sendMessageToConversation(
       });
       return result.messageId;
     }
-    const result = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
+    const result = await provider.sendTextMessage({
       to: phone,
       text: contentText!,
       contextMessageId,

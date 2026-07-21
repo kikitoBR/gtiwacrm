@@ -445,7 +445,7 @@ async function handleStatusUpdate(status: {
  * Runs on a best-effort basis — failures here must not break the
  * main inbound-message flow, so errors are swallowed with a log.
  */
-async function flagBroadcastReplyIfAny(accountId: string, contactId: string) {
+export async function flagBroadcastReplyIfAny(accountId: string, contactId: string) {
   try {
     // Most recent outbound broadcast in this account that hasn't
     // been replied to yet. Account-scoped so a shared inbox reply
@@ -981,7 +981,7 @@ interface ContactOutcome {
   wasCreated: boolean
 }
 
-async function findOrCreateContact(
+export async function findOrCreateContact(
   accountId: string,
   configOwnerUserId: string,
   phone: string,
@@ -1041,7 +1041,7 @@ async function findOrCreateContact(
   return { contact: newContact, wasCreated: true }
 }
 
-async function findOrCreateConversation(
+export async function findOrCreateConversation(
   accountId: string,
   configOwnerUserId: string,
   contactId: string,

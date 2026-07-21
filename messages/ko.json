@@ -1,4 +1,10 @@
 {
+  "roles": {
+    "owner": "소유자",
+    "admin": "관리자",
+    "agent": "상담원",
+    "viewer": "뷰어"
+  },
   "LoginPage": {
     "titleAccept": "로그인하여 수락하기",
     "titleWelcome": "다시 오신 것을 환영합니다",

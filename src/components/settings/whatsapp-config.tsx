@@ -70,6 +70,13 @@ export function WhatsAppConfig() {
   const [pin, setPin] = useState('');
   const [tokenEdited, setTokenEdited] = useState(false);
 
+  const [providerType, setProviderType] = useState<'meta' | 'evolution'>('meta');
+  const [evolutionApiUrl, setEvolutionApiUrl] = useState('');
+  const [evolutionApiKey, setEvolutionApiKey] = useState('');
+  const [evolutionInstanceName, setEvolutionInstanceName] = useState('');
+  const [apiKeyEdited, setApiKeyEdited] = useState(false);
+  const [instanceNameEdited, setInstanceNameEdited] = useState(false);
+
   // True once /register has succeeded on Meta's side (timestamp set
   // in the row). When false, the saved config is metadata-only and
   // Meta will silently drop every inbound event — that's the
@@ -115,20 +122,34 @@ export function WhatsAppConfig() {
 
       if (data) {
         setConfig(data);
+        setProviderType(data.provider_type || 'meta');
         setPhoneNumberId(data.phone_number_id || '');
         setWabaId(data.waba_id || '');
-        setAccessToken(MASKED_TOKEN);
+        setAccessToken(data.access_token ? MASKED_TOKEN : '');
         setVerifyToken('');
         setPin('');
         setTokenEdited(false);
+
+        setEvolutionApiUrl(data.evolution_api_url || '');
+        setEvolutionApiKey(data.evolution_api_key ? MASKED_TOKEN : '');
+        setEvolutionInstanceName(data.evolution_instance_name ? MASKED_TOKEN : '');
+        setApiKeyEdited(false);
+        setInstanceNameEdited(false);
       } else {
         setConfig(null);
+        setProviderType('meta');
         setPhoneNumberId('');
         setWabaId('');
         setAccessToken('');
         setVerifyToken('');
         setPin('');
         setTokenEdited(false);
+
+        setEvolutionApiUrl('');
+        setEvolutionApiKey('');
+        setEvolutionInstanceName('');
+        setApiKeyEdited(false);
+        setInstanceNameEdited(false);
       }
       // Clear any stale probe result when reloading the row.
       setRegistrationProbe(null);
@@ -183,42 +204,58 @@ export function WhatsAppConfig() {
   }, [authLoading, profileLoading, user?.id, accountId, fetchConfig]);
 
   async function handleSave() {
-    if (!phoneNumberId.trim()) {
-      toast.error('Phone Number ID is required');
-      return;
-    }
-    if (!config && (!accessToken.trim() || !tokenEdited)) {
-      toast.error('Access Token is required for initial setup');
-      return;
+    if (providerType === 'evolution') {
+      if (!evolutionApiUrl.trim()) {
+        toast.error('Evolution API URL is required');
+        return;
+      }
+      if (!config && (!evolutionApiKey.trim() || !apiKeyEdited)) {
+        toast.error('Evolution API Key is required for initial setup');
+        return;
+      }
+      if (!config && (!evolutionInstanceName.trim() || !instanceNameEdited)) {
+        toast.error('Evolution Instance Name is required for initial setup');
+        return;
+      }
+    } else {
+      if (!phoneNumberId.trim()) {
+        toast.error('Phone Number ID is required');
+        return;
+      }
+      if (!config && (!accessToken.trim() || !tokenEdited)) {
+        toast.error('Access Token is required for initial setup');
+        return;
+      }
     }
 
     try {
       setSaving(true);
 
-      // Always POST through the API — it verifies with Meta and encrypts
-      // the access_token server-side with ENCRYPTION_KEY. Skipping this
-      // and writing direct to Supabase stores the token in plaintext,
-      // which then fails decryption on every subsequent health check.
       const payload: Record<string, unknown> = {
-        phone_number_id: phoneNumberId.trim(),
-        waba_id: wabaId.trim() || null,
-        verify_token: verifyToken.trim() || null,
-        // Optional — only sent when the user filled it in. The server
-        // requires it on first save or when changing numbers; for a
-        // simple token rotation, leaving it blank skips re-register.
-        pin: pin.trim() || null,
+        provider_type: providerType,
       };
 
-      if (tokenEdited && accessToken !== MASKED_TOKEN && accessToken.trim()) {
-        payload.access_token = accessToken.trim();
-      } else if (config) {
-        // Existing config — reuse stored encrypted token by decrypting on the
-        // server. But our POST handler requires an access_token to verify
-        // with Meta. If the user didn't change the token, we need to signal
-        // that. Simplest: require token re-entry if they're updating.
-        toast.error('Please re-enter the Access Token to save changes');
-        setSaving(false);
-        return;
+      if (providerType === 'evolution') {
+        payload.evolution_api_url = evolutionApiUrl.trim();
+        if (apiKeyEdited && evolutionApiKey !== MASKED_TOKEN && evolutionApiKey.trim()) {
+          payload.evolution_api_key = evolutionApiKey.trim();
+        }
+        if (instanceNameEdited && evolutionInstanceName !== MASKED_TOKEN && evolutionInstanceName.trim()) {
+          payload.evolution_instance_name = evolutionInstanceName.trim();
+        }
+      } else {
+        payload.phone_number_id = phoneNumberId.trim();
+        payload.waba_id = wabaId.trim() || null;
+        payload.verify_token = verifyToken.trim() || null;
+        payload.pin = pin.trim() || null;
+
+        if (tokenEdited && accessToken !== MASKED_TOKEN && accessToken.trim()) {
+          payload.access_token = accessToken.trim();
+        } else if (config) {
+          toast.error('Please re-enter the Access Token to save changes');
+          setSaving(false);
+          return;
+        }
       }
 
       const res = await fetch('/api/whatsapp/config', {
@@ -235,37 +272,28 @@ export function WhatsAppConfig() {
         return;
       }
 
-      // The route now returns a structured outcome:
-      //   * registered=true   → number is live, events will flow
-      //   * registered=false  → credentials saved but /register
-      //                         failed; UI shows the specific error
-      //                         and a retry path. registration_error
-      //                         is human-readable from Meta.
-      if (data.registered === false && data.registration_error) {
-        toast.error(
-          `Saved, but Meta couldn't register the number: ${data.registration_error}`,
-          { duration: 12000 },
-        );
-      } else if (data.registration_skipped) {
-        // Credentials saved + verified, but /register was skipped
-        // because no PIN was supplied (e.g. a Meta test number).
-        // Don't claim the number is "Live" — point at the
-        // Registration status banner instead.
-        toast.success(
-          'Credentials saved and verified. Inbound registration was skipped (no PIN) — see Registration status below.',
-          { duration: 10000 },
-        );
-        setPin('');
+      if (providerType === 'evolution') {
+        toast.success('Evolution API connected. Ready to scan QR Code if needed.');
       } else {
-        toast.success(
-          data.phone_info?.verified_name
-            ? `Live — ${data.phone_info.verified_name} can now receive events.`
-            : 'WhatsApp connected. Events will start flowing within a minute.',
-        );
-        // Clear the PIN so subsequent saves don't accidentally
-        // re-register (which would void the active subscription if
-        // the PIN became stale).
-        setPin('');
+        if (data.registered === false && data.registration_error) {
+          toast.error(
+            `Saved, but Meta couldn't register the number: ${data.registration_error}`,
+            { duration: 12000 },
+          );
+        } else if (data.registration_skipped) {
+          toast.success(
+            'Credentials saved and verified. Inbound registration was skipped (no PIN) — see Registration status below.',
+            { duration: 10000 },
+          );
+          setPin('');
+        } else {
+          toast.success(
+            data.phone_info?.verified_name
+              ? `Live — ${data.phone_info.verified_name} can now receive events.`
+              : 'WhatsApp connected. Events will start flowing within a minute.',
+          );
+          setPin('');
+        }
       }
 
       if (accountId) await fetchConfig(accountId);
@@ -350,11 +378,17 @@ export function WhatsAppConfig() {
 
       toast.success('Configuration cleared. You can now re-enter your credentials.');
       setConfig(null);
+      setProviderType('meta');
       setPhoneNumberId('');
       setWabaId('');
       setAccessToken('');
       setVerifyToken('');
       setTokenEdited(false);
+      setEvolutionApiUrl('');
+      setEvolutionApiKey('');
+      setEvolutionInstanceName('');
+      setApiKeyEdited(false);
+      setInstanceNameEdited(false);
       setConnectionStatus('disconnected');
       setResetReason(null);
       setStatusMessage('');
@@ -451,12 +485,55 @@ export function WhatsAppConfig() {
           </AlertDescription>
         </Alert>
 
-        {/* Registration Status — the "is it actually live?" check.
-            Credentials being valid is necessary but not sufficient;
-            without a successful /register call the number won't
-            receive inbound events. Surface this dimension separately
-            so users don't trust a misleading green banner. */}
-        {config && (
+        {/* Provider Selection */}
+        <Card className="border-border bg-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-foreground text-sm font-medium">{t('providerLabel')}</CardTitle>
+            <CardDescription className="text-xs text-muted-foreground">
+              Escolha a tecnologia utilizada para conectar seu WhatsApp.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <label className={`flex-1 flex flex-col gap-1.5 p-4 border rounded-xl cursor-pointer transition-all ${providerType === 'meta' ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border bg-card hover:bg-muted/40'}`}>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="provider_type"
+                    value="meta"
+                    checked={providerType === 'meta'}
+                    onChange={() => setProviderType('meta')}
+                    className="accent-primary"
+                  />
+                  <span className="font-semibold text-foreground text-sm">{t('providerMeta')}</span>
+                </div>
+                <span className="text-[11px] text-muted-foreground ml-5 leading-relaxed">
+                  Conexão oficial via Cloud API da Meta. Requer conta business e aprovação de templates para mensagens pós-24h.
+                </span>
+              </label>
+
+              <label className={`flex-1 flex flex-col gap-1.5 p-4 border rounded-xl cursor-pointer transition-all ${providerType === 'evolution' ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border bg-card hover:bg-muted/40'}`}>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="provider_type"
+                    value="evolution"
+                    checked={providerType === 'evolution'}
+                    onChange={() => setProviderType('evolution')}
+                    className="accent-primary"
+                  />
+                  <span className="font-semibold text-foreground text-sm">{t('providerEvolution')}</span>
+                </div>
+                <span className="text-[11px] text-muted-foreground ml-5 leading-relaxed">
+                  Conecte qualquer número de WhatsApp normal ou business lendo um Código QR. Gratuito e sem limite de 24 horas.
+                </span>
+              </label>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Registration Status — the "is it actually live?" check (Meta Only). */}
+        {providerType === 'meta' && config && (
           <Alert
             className={
               isRegistered
@@ -500,7 +577,7 @@ export function WhatsAppConfig() {
               {isRegistered ? (
                 <span
                   dangerouslySetInnerHTML={{
-                    __html: t('subscribedSince', {
+                      __html: t('subscribedSince', {
                       date: config.registered_at
                         ? new Date(config.registered_at).toLocaleString()
                         : t('unknownDate'),
@@ -554,131 +631,225 @@ export function WhatsAppConfig() {
           </Alert>
         )}
 
-        {/* API Credentials */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-foreground">{t('apiCredentialsTitle')}</CardTitle>
-            <CardDescription className="text-muted-foreground">
-              {t('apiCredentialsDesc')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-muted-foreground">{t('phoneNumberId')}</Label>
-              <Input
-                placeholder="e.g. 100234567890123"
-                value={phoneNumberId}
-                onChange={(e) => setPhoneNumberId(e.target.value)}
-                className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-muted-foreground">{t('wabaId')}</Label>
-              <Input
-                placeholder="e.g. 100234567890456"
-                value={wabaId}
-                onChange={(e) => setWabaId(e.target.value)}
-                className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-muted-foreground">{t('accessToken')}</Label>
-              <div className="relative">
+        {/* Meta API Credentials */}
+        {providerType === 'meta' && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-foreground">{t('apiCredentialsTitle')}</CardTitle>
+              <CardDescription className="text-muted-foreground">
+                {t('apiCredentialsDesc')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">{t('phoneNumberId')}</Label>
                 <Input
-                  type={showToken ? 'text' : 'password'}
-                  placeholder={t('accessTokenPlaceholder')}
-                  value={accessToken}
+                  placeholder="e.g. 100234567890123"
+                  value={phoneNumberId}
+                  onChange={(e) => setPhoneNumberId(e.target.value)}
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">{t('wabaId')}</Label>
+                <Input
+                  placeholder="e.g. 100234567890456"
+                  value={wabaId}
+                  onChange={(e) => setWabaId(e.target.value)}
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">{t('accessToken')}</Label>
+                <div className="relative">
+                  <Input
+                    type={showToken ? 'text' : 'password'}
+                    placeholder={t('accessTokenPlaceholder')}
+                    value={accessToken}
+                    onChange={(e) => {
+                      setAccessToken(e.target.value);
+                      setTokenEdited(true);
+                    }}
+                    onFocus={() => {
+                      if (accessToken === MASKED_TOKEN) {
+                        setAccessToken('');
+                        setTokenEdited(true);
+                      }
+                    }}
+                    className="bg-muted border-border text-foreground placeholder:text-muted-foreground pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowToken(!showToken)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+                {config && !tokenEdited && (
+                  <p className="text-xs text-muted-foreground">
+                    {t('tokenHidden')}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">{t('webhookVerifyToken')}</Label>
+                <Input
+                  placeholder={t('webhookVerifyTokenPlaceholder')}
+                  value={verifyToken}
+                  onChange={(e) => setVerifyToken(e.target.value)}
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('webhookVerifyTokenHint')}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">
+                  {t('twoStepPin')}
+                  <span className="ml-1 text-muted-foreground">{t('optional')}</span>
+                </Label>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder={t('pinPlaceholder')}
+                  value={pin}
+                  onChange={(e) =>
+                    setPin(e.target.value.replace(/\D/g, '').slice(0, 6))
+                  }
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground tracking-widest"
+                />
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  <span dangerouslySetInnerHTML={{ __html: t.raw('pinHint') }} />
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Evolution API Credentials */}
+        {providerType === 'evolution' && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-foreground">Dados da Evolution API</CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Forneça os dados de conexão do seu servidor Evolution API.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">{t('evolutionApiUrl')}</Label>
+                <Input
+                  placeholder="https://api.seudominio.com"
+                  value={evolutionApiUrl}
+                  onChange={(e) => setEvolutionApiUrl(e.target.value)}
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('evolutionUrlHint')}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">{t('evolutionApiKey')}</Label>
+                <div className="relative">
+                  <Input
+                    type={showToken ? 'text' : 'password'}
+                    placeholder={t('evolutionApiKeyPlaceholder')}
+                    value={evolutionApiKey}
+                    onChange={(e) => {
+                      setEvolutionApiKey(e.target.value);
+                      setApiKeyEdited(true);
+                    }}
+                    onFocus={() => {
+                      if (evolutionApiKey === MASKED_TOKEN) {
+                        setEvolutionApiKey('');
+                        setApiKeyEdited(true);
+                      }
+                    }}
+                    className="bg-muted border-border text-foreground placeholder:text-muted-foreground pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowToken(!showToken)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t('evolutionApiKeyHint')}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">{t('evolutionInstanceName')}</Label>
+                <Input
+                  placeholder={t('evolutionInstanceNamePlaceholder')}
+                  value={evolutionInstanceName}
                   onChange={(e) => {
-                    setAccessToken(e.target.value);
-                    setTokenEdited(true);
+                    setEvolutionInstanceName(e.target.value);
+                    setInstanceNameEdited(true);
                   }}
                   onFocus={() => {
-                    if (accessToken === MASKED_TOKEN) {
-                      setAccessToken('');
-                      setTokenEdited(true);
+                    if (evolutionInstanceName === MASKED_TOKEN) {
+                      setEvolutionInstanceName('');
+                      setInstanceNameEdited(true);
                     }
                   }}
-                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground pr-10"
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowToken(!showToken)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                </button>
-              </div>
-              {config && !tokenEdited && (
                 <p className="text-xs text-muted-foreground">
-                  {t('tokenHidden')}
+                  {t('evolutionInstanceNameHint')}
                 </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-muted-foreground">{t('webhookVerifyToken')}</Label>
-              <Input
-                placeholder={t('webhookVerifyTokenPlaceholder')}
-                value={verifyToken}
-                onChange={(e) => setVerifyToken(e.target.value)}
-                className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
-              />
-              <p className="text-xs text-muted-foreground">
-                {t('webhookVerifyTokenHint')}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-muted-foreground">
-                {t('twoStepPin')}
-                <span className="ml-1 text-muted-foreground">{t('optional')}</span>
-              </Label>
-              <Input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder={t('pinPlaceholder')}
-                value={pin}
-                onChange={(e) =>
-                  setPin(e.target.value.replace(/\D/g, '').slice(0, 6))
-                }
-                className="bg-muted border-border text-foreground placeholder:text-muted-foreground tracking-widest"
-              />
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                <span dangerouslySetInnerHTML={{ __html: t('pinHint') }} />
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Webhook URL */}
         <Card>
           <CardHeader>
             <CardTitle className="text-foreground">{t('webhookTitle')}</CardTitle>
             <CardDescription className="text-muted-foreground">
-              {t('webhookDesc')}
+              {providerType === 'evolution' 
+                ? 'Copie a URL de webhook abaixo e insira nas configurações de webhook do seu painel da Evolution API para receber eventos.'
+                : t('webhookDesc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              <Label className="text-muted-foreground">{t('webhookUrl')}</Label>
+              <Label className="text-muted-foreground">
+                {providerType === 'evolution' ? 'URL do Webhook da Evolution' : t('webhookUrl')}
+              </Label>
               <div className="flex gap-2">
                 <Input
                   readOnly
-                  value={webhookUrl}
+                  value={providerType === 'evolution' ? `${webhookUrl}/evolution` : webhookUrl}
                   className="bg-muted border-border text-muted-foreground font-mono text-sm"
                 />
                 <Button
                   variant="outline"
                   size="icon"
-                  onClick={handleCopyWebhookUrl}
+                  onClick={() => {
+                    navigator.clipboard.writeText(providerType === 'evolution' ? `${webhookUrl}/evolution` : webhookUrl);
+                    toast.success('Webhook URL copiada para a área de transferência');
+                  }}
                   className="shrink-0 border-border text-muted-foreground hover:text-foreground hover:bg-muted"
                 >
                   <Copy className="size-4" />
                 </Button>
               </div>
+              {providerType === 'evolution' && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Ative os seguintes eventos na Evolution API: <code className="text-foreground">MESSAGES_UPSERT</code> e <code className="text-foreground">MESSAGES_UPDATE</code>.
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -760,7 +931,7 @@ export function WhatsAppConfig() {
                 </AccordionTrigger>
                 <AccordionContent className="text-muted-foreground">
                   <ol className="list-decimal list-inside space-y-1 text-sm">
-                    <li dangerouslySetInnerHTML={{ __html: t('step1_1') }} />
+                    <li dangerouslySetInnerHTML={{ __html: t.raw('step1_1') }} />
                     <li>{t('step1_2')}</li>
                     <li>{t('step1_3')}</li>
                     <li>{t('step1_4')}</li>
@@ -794,9 +965,9 @@ export function WhatsAppConfig() {
                 <AccordionContent className="text-muted-foreground">
                   <ol className="list-decimal list-inside space-y-1 text-sm">
                     <li>{t('step3_1')}</li>
-                    <li dangerouslySetInnerHTML={{ __html: t('step3_2') }} />
-                    <li dangerouslySetInnerHTML={{ __html: t('step3_3') }} />
-                    <li dangerouslySetInnerHTML={{ __html: t('step3_4') }} />
+                    <li dangerouslySetInnerHTML={{ __html: t.raw('step3_2') }} />
+                    <li dangerouslySetInnerHTML={{ __html: t.raw('step3_3') }} />
+                    <li dangerouslySetInnerHTML={{ __html: t.raw('step3_4') }} />
                   </ol>
                 </AccordionContent>
               </AccordionItem>
@@ -812,8 +983,8 @@ export function WhatsAppConfig() {
                   <ol className="list-decimal list-inside space-y-1 text-sm">
                     <li>{t('step4_1')}</li>
                     <li>{t('step4_2')}</li>
-                    <li dangerouslySetInnerHTML={{ __html: t('step4_3') }} />
-                    <li dangerouslySetInnerHTML={{ __html: t('step4_4') }} />
+                    <li dangerouslySetInnerHTML={{ __html: t.raw('step4_3') }} />
+                    <li dangerouslySetInnerHTML={{ __html: t.raw('step4_4') }} />
                     <li>{t('step4_5')}</li>
                   </ol>
                 </AccordionContent>
