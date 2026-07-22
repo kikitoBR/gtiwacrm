@@ -30,6 +30,17 @@ interface PipelineBoardProps {
   onEditDeal: (deal: Deal) => void;
 }
 
+export function formatStageName(name: string): string {
+  switch (name) {
+    case "New Lead": return "Novo Lead";
+    case "Qualified": return "Qualificado";
+    case "Proposal Sent": return "Proposta Enviada";
+    case "Negotiation": return "Negociação";
+    case "Won": return "Ganho";
+    default: return name;
+  }
+}
+
 export function PipelineBoard({
   stages,
   deals,
@@ -219,7 +230,7 @@ function StageColumn({
       />
       <div className="flex items-center justify-between pt-3">
         <h3 className="truncate text-sm font-semibold text-foreground">
-          {stage.name}
+          {formatStageName(stage.name)}
         </h3>
         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
           {deals.length}

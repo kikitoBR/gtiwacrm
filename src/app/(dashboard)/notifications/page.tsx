@@ -17,6 +17,18 @@ const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   conversation_assigned: UserPlus,
 };
 
+function translateNotificationTitle(title: string): string {
+  if (title === "New conversation assigned") return "Nova conversa atribuída";
+  return title;
+}
+
+function translateNotificationBody(body?: string | null): string | null {
+  if (!body) return null;
+  return body
+    .replace(/Someone assigned you a conversation with/g, "Alguém atribuiu a você uma conversa com")
+    .replace(/assigned you a conversation with/g, "atribuiu a você uma conversa com");
+}
+
 export default function NotificationsPage() {
   const router = useRouter();
   const { accountId } = useAuth();
@@ -104,7 +116,7 @@ export default function NotificationsPage() {
         .eq("id", id)
         .is("read_at", null);
       if (updateErr) {
-        toast.error("Failed to mark notification as read");
+        toast.error("Falha ao marcar notificação como lida");
         load();
       }
     },
@@ -137,7 +149,7 @@ export default function NotificationsPage() {
       .is("read_at", null);
     setMarkingAll(false);
     if (updateErr) {
-      toast.error("Failed to mark all as read");
+      toast.error("Falha ao marcar todas como lidas");
       load();
     }
   }, [unreadIds.length, load]);
@@ -147,7 +159,7 @@ export default function NotificationsPage() {
       <div className="flex h-64 flex-col items-center justify-center gap-2">
         <p className="text-sm text-destructive">{error}</p>
         <Button variant="outline" onClick={() => window.location.reload()}>
-          Retry
+          Tentar novamente
         </Button>
       </div>
     );
@@ -165,9 +177,9 @@ export default function NotificationsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Notifications</h1>
+          <h1 className="text-2xl font-bold text-foreground">Notificações</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Conversations other teammates assign to you show up here.
+            Conversas atribuídas a você por outros membros da equipe aparecem aqui.
           </p>
         </div>
         <Button
@@ -181,7 +193,7 @@ export default function NotificationsPage() {
           ) : (
             <CheckCheck className="h-4 w-4" />
           )}
-          Mark all as read
+          Marcar todas como lidas
         </Button>
       </div>
 
@@ -191,11 +203,10 @@ export default function NotificationsPage() {
             <Bell className="h-6 w-6 text-primary" />
           </div>
           <p className="mt-3 text-sm font-medium text-foreground">
-            No notifications yet
+            Nenhuma notificação ainda
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            You&apos;ll see an alert here when someone assigns you a
-            conversation.
+            Você verá um alerta aqui quando alguém atribuir uma conversa para você.
           </p>
         </div>
       ) : (
@@ -203,6 +214,8 @@ export default function NotificationsPage() {
           {notifications.map((n) => {
             const Icon = TYPE_ICON[n.type] ?? Bell;
             const isUnread = !n.read_at;
+            const titleTranslated = translateNotificationTitle(n.title);
+            const bodyTranslated = translateNotificationBody(n.body);
             return (
               <li key={n.id}>
                 <button
@@ -237,18 +250,18 @@ export default function NotificationsPage() {
                           isUnread ? "text-foreground" : "text-muted-foreground",
                         )}
                       >
-                        {n.title}
+                        {titleTranslated}
                       </span>
                       {isUnread && (
                         <span
-                          aria-label="Unread"
+                          aria-label="Não lida"
                           className="h-2 w-2 flex-shrink-0 rounded-full bg-primary"
                         />
                       )}
                     </div>
-                    {n.body && (
+                    {bodyTranslated && (
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {n.body}
+                        {bodyTranslated}
                       </p>
                     )}
                     <p className="mt-1 text-[11px] text-muted-foreground/70">

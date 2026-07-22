@@ -114,10 +114,10 @@ describe("mondayIndex", () => {
 
   it("aligns with DOW_SHORT_MON_FIRST labels", () => {
     expect(DOW_SHORT_MON_FIRST[mondayIndex(new Date("2026-05-18T12:00:00"))]).toBe(
-      "Mon",
+      "Seg",
     );
     expect(DOW_SHORT_MON_FIRST[mondayIndex(new Date("2026-05-24T12:00:00"))]).toBe(
-      "Sun",
+      "Dom",
     );
   });
 });

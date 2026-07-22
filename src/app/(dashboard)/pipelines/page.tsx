@@ -38,12 +38,18 @@ import { useTranslations } from "next-intl";
 
 // Spec-defined seed — name and color per the product spec.
 const SPEC_DEFAULT_STAGES = [
-  { name: "New Lead", color: "#3b82f6", position: 0 }, // blue
-  { name: "Qualified", color: "#eab308", position: 1 }, // yellow
-  { name: "Proposal Sent", color: "#f97316", position: 2 }, // orange
-  { name: "Negotiation", color: "#8b5cf6", position: 3 }, // purple
-  { name: "Won", color: "#22c55e", position: 4 }, // green
+  { name: "Novo Lead", color: "#3b82f6", position: 0 }, // blue
+  { name: "Qualificado", color: "#eab308", position: 1 }, // yellow
+  { name: "Proposta Enviada", color: "#f97316", position: 2 }, // orange
+  { name: "Negociação", color: "#8b5cf6", position: 3 }, // purple
+  { name: "Ganho", color: "#22c55e", position: 4 }, // green
 ];
+
+function formatPipelineName(name?: string | null): string {
+  if (!name) return "";
+  if (name === "Sales Pipeline") return "Funil de Vendas";
+  return name;
+}
 
 export default function PipelinesPage() {
   const t = useTranslations("Pipelines.page");
@@ -325,7 +331,7 @@ export default function PipelinesPage() {
             >
               <GitBranch className="h-4 w-4 text-primary" />
               <span className="font-semibold">
-                {selectedPipeline?.name ?? t("selectPipeline")}
+                {selectedPipeline ? formatPipelineName(selectedPipeline.name) : t("selectPipeline")}
               </span>
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </DropdownMenuTrigger>
@@ -349,7 +355,7 @@ export default function PipelinesPage() {
                   }
                 >
                   <GitBranch className="mr-2 h-3.5 w-3.5" />
-                  {p.name}
+                  {formatPipelineName(p.name)}
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator className="bg-border" />
