@@ -381,6 +381,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
   }
 
   private formatPhone(phone: string): string {
+    if (phone.includes('@g.us')) return phone
     // A Evolution API geralmente prefere números formatados apenas com números sem '+' ou '@s.whatsapp.net'
     return phone.replace(/\D/g, '')
   }

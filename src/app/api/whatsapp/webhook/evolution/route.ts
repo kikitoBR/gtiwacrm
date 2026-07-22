@@ -72,13 +72,24 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Invalid message key' }, { status: 200 })
       }
 
-      // Ignora mensagens de grupo ou status
-      if (key.remoteJid.includes('@g.us') || key.remoteJid.includes('status@broadcast')) {
-        return NextResponse.json({ status: 'ignored', reason: 'Group/Status message' }, { status: 200 })
+      // Ignora mensagens de status
+      if (key.remoteJid.includes('status@broadcast')) {
+        return NextResponse.json({ status: 'ignored', reason: 'Status message' }, { status: 200 })
       }
 
-      const senderPhone = key.remoteJid.split('@')[0]
-      const contactName = item.pushName || senderPhone
+      const isGroup = key.remoteJid.includes('@g.us')
+      const senderPhone = isGroup ? key.remoteJid : key.remoteJid.split('@')[0]
+      let contactName = item.pushName || (isGroup ? `Grupo ${key.remoteJid.split('@')[0]}` : senderPhone)
+
+      if (isGroup) {
+        contactName =
+          item.groupName ||
+          item.subject ||
+          data?.groupSubject ||
+          data?.subject ||
+          contactName
+      }
+
       const avatarUrl =
         item.profilePicUrl ||
         item.pictureUrl ||
@@ -191,6 +202,15 @@ export async function POST(request: Request) {
         }
       }
 
+      if (isGroup && !fromMe) {
+        const pRaw = item.participant || key.participant || ''
+        const pPhone = pRaw ? pRaw.split('@')[0] : ''
+        const pName = item.pushName || pPhone
+        if (pName && contentText) {
+          contentText = `*${pName}:* ${contentText}`
+        }
+      }
+
       const messageId = key.id
       const timestamp = item.messageTimestamp || data.messageTimestamp || Math.floor(Date.now() / 1000)
 
@@ -286,8 +306,8 @@ export async function POST(request: Request) {
               }).catch((err: unknown) => console.error('[webhook/evolution/automations] failed:', err))
             }
 
-            // Reposta Automática de IA
-            if (!interactiveReplyId && contentText.trim()) {
+            // Resposta Automática de IA (apenas em conversas 1-a-1, não em grupos)
+            if (!isGroup && !interactiveReplyId && contentText.trim()) {
               await dispatchInboundToAiReply({
                 accountId: config.account_id,
                 conversationId: conversation.id,

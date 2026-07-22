@@ -40,6 +40,16 @@ export async function findExistingContact(
   const normalized = normalizePhone(phone);
   if (!normalized) return null;
 
+  if (phone.includes('@g.us')) {
+    const { data, error } = await db
+      .from("contacts")
+      .select("*")
+      .eq("account_id", accountId)
+      .eq("phone", phone);
+    if (error || !data || data.length === 0) return null;
+    return data[0] as ExistingContact;
+  }
+
   const suffix = normalized.length >= 8 ? normalized.slice(-8) : normalized;
 
   const { data, error } = await db

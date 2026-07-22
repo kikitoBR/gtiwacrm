@@ -232,8 +232,9 @@ export async function sendMessageToConversation(
     );
   }
 
-  const sanitizedPhone = sanitizePhoneForMeta(contact.phone);
-  if (!isValidE164(sanitizedPhone)) {
+  const isGroup = contact.phone.includes('@g.us');
+  const sanitizedPhone = isGroup ? contact.phone : sanitizePhoneForMeta(contact.phone);
+  if (!isGroup && !isValidE164(sanitizedPhone)) {
     throw new SendMessageError(
       'bad_request',
       'Invalid phone number format',

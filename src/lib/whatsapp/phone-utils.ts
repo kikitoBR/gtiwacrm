@@ -14,6 +14,7 @@ export function sanitizePhoneForMeta(phone: string): string {
  */
 export function normalizePhone(phone: string): string {
   if (!phone) return ''
+  if (phone.includes('@g.us')) return phone.toLowerCase().trim()
   return phone.replace(/\D/g, '')
 }
 
@@ -23,6 +24,9 @@ export function normalizePhone(phone: string): string {
  * by comparing the last 8 digits.
  */
 export function phonesMatch(phone1: string, phone2: string): boolean {
+  if (phone1.includes('@g.us') || phone2.includes('@g.us')) {
+    return phone1.toLowerCase().trim() === phone2.toLowerCase().trim()
+  }
   const n1 = normalizePhone(phone1)
   const n2 = normalizePhone(phone2)
   if (n1 === n2) return true
