@@ -232,6 +232,53 @@ export async function POST(request: Request) {
         }
       }
 
+      // Se for mídia (imagem, vídeo, áudio, documento), baixa via Evolution API / base64 e salva no Supabase Storage
+      if (contentType === 'image' || contentType === 'video' || contentType === 'audio' || contentType === 'document') {
+        let base64String =
+          msg?.base64 ||
+          item?.base64 ||
+          data?.base64 ||
+          msg?.imageMessage?.base64 ||
+          msg?.videoMessage?.base64 ||
+          msg?.audioMessage?.base64 ||
+          msg?.documentMessage?.base64 ||
+          null
+
+        const docFilename = msg?.documentMessage?.title || msg?.documentMessage?.fileName || undefined
+
+        if (!base64String && config.evolution_api_url && config.evolution_api_key) {
+          try {
+            const rawApiKey = decrypt(config.evolution_api_key as string)
+            if (rawApiKey) {
+              const provider = new EvolutionWhatsAppProvider(
+                config.evolution_api_url as string,
+                rawApiKey,
+                instance
+              )
+              const mediaObj = await provider.getBase64FromMedia(item)
+              if (mediaObj?.base64) {
+                base64String = mediaObj.base64
+              }
+            }
+          } catch (e) {
+            console.warn('[webhook/evolution] Failed to fetch media base64 from Evolution:', e)
+          }
+        }
+
+        if (base64String) {
+          const publicUrl = await saveInboundMediaToStorage(
+            config.account_id,
+            key.id,
+            contentType,
+            base64String,
+            docFilename
+          )
+          if (publicUrl) {
+            mediaUrl = publicUrl
+          }
+        }
+      }
+
       if (isGroup && !fromMe) {
         const pRaw = item.participant || key.participant || ''
         const pPhone = pRaw ? pRaw.split('@')[0] : ''
@@ -427,5 +474,63 @@ async function checkIsFirstInbound(conversationId: string): Promise<boolean> {
     .select('id', { count: 'exact', head: true })
     .eq('conversation_id', conversationId)
     .eq('sender_type', 'customer')
-  return (count ?? 0) === 1 // já inserimos a mensagem atual no banco, então o contador deve ser exatamente 1 se for a primeira.
+
+  return (count || 0) <= 1
+}
+
+async function saveInboundMediaToStorage(
+  accountId: string,
+  messageId: string,
+  contentType: string,
+  base64Data: string,
+  filename?: string
+): Promise<string | null> {
+  try {
+    let cleanBase64 = base64Data
+    let mimeType = 'application/octet-stream'
+
+    if (base64Data.startsWith('data:')) {
+      const match = base64Data.match(/^data:([^;]+);base64,(.+)$/)
+      if (match) {
+        mimeType = match[1]
+        cleanBase64 = match[2]
+      }
+    } else {
+      if (contentType === 'image') mimeType = 'image/jpeg'
+      if (contentType === 'video') mimeType = 'video/mp4'
+      if (contentType === 'audio') mimeType = 'audio/ogg'
+      if (contentType === 'document') mimeType = 'application/pdf'
+    }
+
+    let ext = 'bin'
+    if (mimeType.includes('image/png')) ext = 'png'
+    else if (mimeType.includes('image')) ext = 'jpg'
+    else if (mimeType.includes('audio')) ext = 'ogg'
+    else if (mimeType.includes('video')) ext = 'mp4'
+    else if (mimeType.includes('pdf')) ext = 'pdf'
+    else if (filename && filename.includes('.')) ext = filename.split('.').pop()!
+
+    const buffer = Buffer.from(cleanBase64, 'base64')
+    if (buffer.length === 0) return null
+
+    const path = `account-${accountId}/${Date.now()}-${messageId.slice(-8)}.${ext}`
+
+    const { error: uploadErr } = await supabaseAdmin()
+      .storage
+      .from('chat-media')
+      .upload(path, buffer, {
+        contentType: mimeType,
+        upsert: true,
+      })
+
+    if (uploadErr) {
+      console.error('[webhook/evolution] Storage upload failed:', uploadErr)
+      return null
+    }
+
+    return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/chat-media/${path}`
+  } catch (err) {
+    console.error('[webhook/evolution] saveInboundMediaToStorage failed:', err)
+    return null
+  }
 }

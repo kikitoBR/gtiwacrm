@@ -89,16 +89,28 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     contextMessageId?: string
   }): Promise<WhatsAppSendResult> {
     const toPhone = this.formatPhone(args.to)
-    
-    // Map media types: Meta audio is voice note, Evolution handles image, video, document, audio
-    let mediaType = args.kind as string
-    if (mediaType === 'audio') {
-      mediaType = 'audio'
+
+    // For audio/voice note, try /message/sendWhatsAppAudio first or fallback to /message/sendMedia
+    if (args.kind === 'audio') {
+      try {
+        const pttBody: Record<string, unknown> = {
+          number: toPhone,
+          audio: args.link,
+        }
+        if (args.contextMessageId) {
+          pttBody.options = { quoted: { key: { id: args.contextMessageId } } }
+        }
+        const data = await this.request('/message/sendWhatsAppAudio', pttBody)
+        const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
+        return { messageId }
+      } catch (err) {
+        console.warn('[Evolution API] sendWhatsAppAudio failed, falling back to sendMedia:', err)
+      }
     }
 
     const body: Record<string, unknown> = {
       number: toPhone,
-      mediatype: mediaType,
+      mediatype: args.kind,
       media: args.link,
       caption: args.caption || '',
     }
@@ -436,6 +448,25 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
         subject: data?.subject || data?.name || data?.groupSubject || undefined,
         pictureUrl: data?.pictureUrl || data?.profilePictureUrl || data?.url || undefined,
       }
+    } catch {
+      return null
+    }
+  }
+
+  async getBase64FromMedia(messageItem: Record<string, unknown>): Promise<{ base64?: string; mimeType?: string } | null> {
+    try {
+      const data = (await this.request('/chat/getBase64FromMediaMessage', {
+        message: messageItem,
+        convertToMp4: false,
+      })) as { base64?: string; mimetype?: string; mimeType?: string }
+
+      if (data?.base64) {
+        return {
+          base64: data.base64,
+          mimeType: data.mimetype || data.mimeType || undefined,
+        }
+      }
+      return null
     } catch {
       return null
     }
