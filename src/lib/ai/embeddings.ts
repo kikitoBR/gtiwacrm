@@ -13,7 +13,14 @@ import { providerHttpError, toNetworkError } from './providers/shared'
 // migration 030.
 // ============================================================
 
-const OPENAI_EMBEDDINGS_URL = 'https://api.openai.com/v1/embeddings'
+export function getOpenAiEmbeddingsUrl(): string {
+  const envUrl = process.env.OPENAI_BASE_URL?.trim()
+  if (envUrl) {
+    const base = envUrl.endsWith('/') ? envUrl.slice(0, -1) : envUrl
+    return `${base}/embeddings`
+  }
+  return 'https://api.openai.com/v1/embeddings'
+}
 
 export const EMBEDDING_MODEL = 'text-embedding-3-small'
 export const EMBEDDING_DIMENSIONS = 1536
@@ -51,7 +58,7 @@ export async function embedTexts(
 
     let res: Response
     try {
-      res = await fetch(OPENAI_EMBEDDINGS_URL, {
+      res = await fetch(getOpenAiEmbeddingsUrl(), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,

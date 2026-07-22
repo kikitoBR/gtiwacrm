@@ -8,7 +8,14 @@ import {
   type ProviderArgs,
 } from './shared'
 
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
+export function getAnthropicUrl(): string {
+  const envUrl = process.env.ANTHROPIC_BASE_URL?.trim()
+  if (envUrl) {
+    const base = envUrl.endsWith('/') ? envUrl.slice(0, -1) : envUrl
+    return `${base}/messages`
+  }
+  return 'https://api.anthropic.com/v1/messages'
+}
 const ANTHROPIC_VERSION = '2023-06-01'
 
 interface AnthropicResponse {
@@ -44,7 +51,7 @@ export async function generateAnthropic(args: ProviderArgs): Promise<ProviderRes
 
   let res: Response
   try {
-    res = await fetch(ANTHROPIC_URL, {
+    res = await fetch(getAnthropicUrl(), {
       method: 'POST',
       headers: {
         'x-api-key': apiKey,

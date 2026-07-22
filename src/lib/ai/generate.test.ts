@@ -96,6 +96,35 @@ describe('generateReply — OpenAI', () => {
     expect(opts.headers.Authorization).toBe('Bearer sk-test')
   })
 
+  it('respects custom OPENAI_BASE_URL env var', async () => {
+    const originalEnv = process.env.OPENAI_BASE_URL
+    process.env.OPENAI_BASE_URL = 'http://localhost:8000/v1'
+
+    try {
+      const fetchMock = vi.fn().mockResolvedValue(
+        okResponse({
+          choices: [{ message: { content: 'Custom response' } }],
+        }),
+      )
+      vi.stubGlobal('fetch', fetchMock)
+
+      await generateReply({
+        config: config({ provider: 'openai' }),
+        systemPrompt: 'sys',
+        messages: [{ role: 'user', content: 'Hi' }],
+      })
+
+      const [url] = fetchMock.mock.calls[0]
+      expect(url).toBe('http://localhost:8000/v1/chat/completions')
+    } finally {
+      if (originalEnv !== undefined) {
+        process.env.OPENAI_BASE_URL = originalEnv
+      } else {
+        delete process.env.OPENAI_BASE_URL
+      }
+    }
+  })
+
   it('maps a 401 to an invalid_key AiError', async () => {
     vi.stubGlobal(
       'fetch',
