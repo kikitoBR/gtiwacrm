@@ -280,10 +280,11 @@ export async function sendMessageToConversation(
   // belong to this same conversation — otherwise a caller could quote
   // messages they can't see by guessing UUIDs.
   let contextMessageId: string | undefined;
+  let contextFromMe: boolean | undefined;
   if (replyToMessageId) {
     const { data: parent, error: parentError } = await db
       .from('messages')
-      .select('message_id, conversation_id')
+      .select('message_id, conversation_id, sender_type')
       .eq('id', replyToMessageId)
       .eq('conversation_id', conversationId)
       .maybeSingle();
@@ -301,6 +302,7 @@ export async function sendMessageToConversation(
       );
     } else {
       contextMessageId = parent.message_id;
+      contextFromMe = parent.sender_type === 'agent' || parent.sender_type === 'bot';
     }
   }
 
@@ -334,6 +336,7 @@ export async function sendMessageToConversation(
         template: templateRow ?? undefined,
         messageParams: templateMessageParams ?? undefined,
         contextMessageId,
+        contextFromMe,
       });
       return result.messageId;
     }
@@ -345,6 +348,7 @@ export async function sendMessageToConversation(
         caption: contentText || undefined,
         filename: filename || undefined,
         contextMessageId,
+        contextFromMe,
       });
       return result.messageId;
     }
@@ -358,6 +362,7 @@ export async function sendMessageToConversation(
           footerText: p.footer || undefined,
           buttons: p.buttons,
           contextMessageId,
+          contextFromMe,
         });
         return result.messageId;
       }
@@ -369,6 +374,7 @@ export async function sendMessageToConversation(
         footerText: p.footer || undefined,
         sections: p.sections,
         contextMessageId,
+        contextFromMe,
       });
       return result.messageId;
     }
@@ -376,6 +382,7 @@ export async function sendMessageToConversation(
       to: phone,
       text: contentText!,
       contextMessageId,
+      contextFromMe,
     });
     return result.messageId;
   };

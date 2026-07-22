@@ -291,6 +291,39 @@ export async function POST(request: Request) {
       const messageId = key.id
       const timestamp = item.messageTimestamp || data.messageTimestamp || Math.floor(Date.now() / 1000)
 
+      // Verificar se a mensagem é resposta a outra (quoted / reply)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const msgObj = msg as any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const itemObj = item as any
+      const contextInfo =
+        msgObj?.extendedTextMessage?.contextInfo ||
+        msgObj?.imageMessage?.contextInfo ||
+        msgObj?.videoMessage?.contextInfo ||
+        msgObj?.audioMessage?.contextInfo ||
+        msgObj?.documentMessage?.contextInfo ||
+        msgObj?.buttonsResponseMessage?.contextInfo ||
+        msgObj?.listResponseMessage?.contextInfo ||
+        itemObj?.contextInfo ||
+        itemObj?.message?.extendedTextMessage?.contextInfo ||
+        null
+
+      const quotedMetaId = contextInfo?.stanzaId || contextInfo?.quotedMessage?.key?.id || null
+      let replyToMessageId: string | null = null
+
+      if (quotedMetaId) {
+        const { data: parentMsg } = await supabaseAdmin()
+          .from('messages')
+          .select('id')
+          .eq('message_id', quotedMetaId)
+          .eq('conversation_id', conversation.id)
+          .maybeSingle()
+
+        if (parentMsg) {
+          replyToMessageId = parentMsg.id
+        }
+      }
+
       // Verificar se mensagem já foi registrada
       const { data: existingMsg } = await supabaseAdmin()
         .from('messages')
@@ -314,6 +347,7 @@ export async function POST(request: Request) {
             status: 'delivered',
             created_at: new Date(timestamp * 1000).toISOString(),
             interactive_reply_id: interactiveReplyId,
+            reply_to_message_id: replyToMessageId,
           })
 
         if (insertErr) {

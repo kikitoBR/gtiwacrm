@@ -11,6 +11,7 @@ export interface WhatsAppProvider {
     to: string
     text: string
     contextMessageId?: string
+    contextFromMe?: boolean
   }): Promise<WhatsAppSendResult>
 
   sendMediaMessage(args: {
@@ -20,6 +21,7 @@ export interface WhatsAppProvider {
     caption?: string
     filename?: string
     contextMessageId?: string
+    contextFromMe?: boolean
   }): Promise<WhatsAppSendResult>
 
   sendTemplateMessage(args: {
@@ -29,6 +31,7 @@ export interface WhatsAppProvider {
     template?: MessageTemplate
     messageParams?: SendTimeParams
     contextMessageId?: string
+    contextFromMe?: boolean
   }): Promise<WhatsAppSendResult>
 
   sendReactionMessage(args: {
@@ -44,6 +47,7 @@ export interface WhatsAppProvider {
     headerText?: string
     footerText?: string
     contextMessageId?: string
+    contextFromMe?: boolean
   }): Promise<WhatsAppSendResult>
 
   sendInteractiveList(args: {
@@ -54,5 +58,6 @@ export interface WhatsAppProvider {
     headerText?: string
     footerText?: string
     contextMessageId?: string
+    contextFromMe?: boolean
   }): Promise<WhatsAppSendResult>
 }

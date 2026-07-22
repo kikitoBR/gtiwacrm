@@ -52,29 +52,38 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     return response.json()
   }
 
+  private buildQuotedPayload(toPhone: string, contextMessageId?: string, contextFromMe?: boolean) {
+    if (!contextMessageId) return {}
+    let remoteJid = toPhone
+    if (!remoteJid.includes('@')) {
+      remoteJid = `${toPhone}@s.whatsapp.net`
+    }
+    const quotedObj = {
+      key: {
+        id: contextMessageId,
+        remoteJid,
+        fromMe: contextFromMe ?? false,
+      },
+    }
+    return {
+      quoted: quotedObj,
+      options: { quoted: quotedObj },
+      quotedMessageId: contextMessageId,
+    }
+  }
+
   async sendTextMessage(args: {
     to: string
     text: string
     contextMessageId?: string
+    contextFromMe?: boolean
   }): Promise<WhatsAppSendResult> {
     const toPhone = this.formatPhone(args.to)
     const body: Record<string, unknown> = {
       number: toPhone,
       text: args.text,
       linkPreview: true,
-    }
-
-    if (args.contextMessageId) {
-      const quotedObj = {
-        key: {
-          id: args.contextMessageId,
-        },
-      }
-      body.quoted = quotedObj
-      body.options = {
-        quoted: quotedObj,
-      }
-      body.quotedMessageId = args.contextMessageId
+      ...this.buildQuotedPayload(toPhone, args.contextMessageId, args.contextFromMe),
     }
 
     const data = await this.request('/message/sendText', body)
@@ -90,8 +99,10 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     caption?: string
     filename?: string
     contextMessageId?: string
+    contextFromMe?: boolean
   }): Promise<WhatsAppSendResult> {
     const toPhone = this.formatPhone(args.to)
+    const quotedPayload = this.buildQuotedPayload(toPhone, args.contextMessageId, args.contextFromMe)
 
     // For audio/voice note, try /message/sendWhatsAppAudio first or fallback to /message/sendMedia
     if (args.kind === 'audio') {
@@ -99,12 +110,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
         const pttBody: Record<string, unknown> = {
           number: toPhone,
           audio: args.link,
-        }
-        if (args.contextMessageId) {
-          const quotedObj = { key: { id: args.contextMessageId } }
-          pttBody.quoted = quotedObj
-          pttBody.options = { quoted: quotedObj }
-          pttBody.quotedMessageId = args.contextMessageId
+          ...quotedPayload,
         }
         const data = await this.request('/message/sendWhatsAppAudio', pttBody)
         const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
@@ -119,17 +125,11 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       mediatype: args.kind,
       media: args.link,
       caption: args.caption || '',
+      ...quotedPayload,
     }
 
     if (args.kind === 'document' && args.filename) {
       body.fileName = args.filename
-    }
-
-    if (args.contextMessageId) {
-      const quotedObj = { key: { id: args.contextMessageId } }
-      body.quoted = quotedObj
-      body.options = { quoted: quotedObj }
-      body.quotedMessageId = args.contextMessageId
     }
 
     const data = await this.request('/message/sendMedia', body)
@@ -266,6 +266,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     headerText?: string
     footerText?: string
     contextMessageId?: string
+    contextFromMe?: boolean
   }): Promise<WhatsAppSendResult> {
     const toPhone = this.formatPhone(args.to)
     const body: Record<string, unknown> = {
@@ -277,20 +278,11 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
         id: btn.id,
         label: btn.title,
       })),
+      ...this.buildQuotedPayload(toPhone, args.contextMessageId, args.contextFromMe),
     }
 
     if (!body.title) delete body.title
     if (!body.footer) delete body.footer
-
-    if (args.contextMessageId) {
-      body.options = {
-        quoted: {
-          key: {
-            id: args.contextMessageId,
-          },
-        },
-      }
-    }
 
     try {
       const data = await this.request('/message/sendButtons', body)
@@ -303,6 +295,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
         to: toPhone,
         text: fallbackText,
         contextMessageId: args.contextMessageId,
+        contextFromMe: args.contextFromMe,
       })
     }
   }
@@ -315,6 +308,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     headerText?: string
     footerText?: string
     contextMessageId?: string
+    contextFromMe?: boolean
   }): Promise<WhatsAppSendResult> {
     const toPhone = this.formatPhone(args.to)
     const body: Record<string, unknown> = {
@@ -331,20 +325,11 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
           rowId: row.id,
         })),
       })),
+      ...this.buildQuotedPayload(toPhone, args.contextMessageId, args.contextFromMe),
     }
 
     if (!body.title) delete body.title
     if (!body.footer) delete body.footer
-
-    if (args.contextMessageId) {
-      body.options = {
-        quoted: {
-          key: {
-            id: args.contextMessageId,
-          },
-        },
-      }
-    }
 
     try {
       const data = await this.request('/message/sendList', body)
@@ -357,6 +342,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
         to: toPhone,
         text: fallbackText,
         contextMessageId: args.contextMessageId,
+        contextFromMe: args.contextFromMe,
       })
     }
   }

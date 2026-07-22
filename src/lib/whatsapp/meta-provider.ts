@@ -17,6 +17,7 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
     to: string
     text: string
     contextMessageId?: string
+    contextFromMe?: boolean
   }): Promise<WhatsAppSendResult> {
     return metaApi.sendTextMessage({
       phoneNumberId: this.phoneNumberId,
@@ -34,6 +35,7 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
     caption?: string
     filename?: string
     contextMessageId?: string
+    contextFromMe?: boolean
   }): Promise<WhatsAppSendResult> {
     return metaApi.sendMediaMessage({
       phoneNumberId: this.phoneNumberId,
@@ -54,6 +56,7 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
     template?: MessageTemplate
     messageParams?: SendTimeParams
     contextMessageId?: string
+    contextFromMe?: boolean
   }): Promise<WhatsAppSendResult> {
     return metaApi.sendTemplateMessage({
       phoneNumberId: this.phoneNumberId,
@@ -88,6 +91,7 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
     headerText?: string
     footerText?: string
     contextMessageId?: string
+    contextFromMe?: boolean
   }): Promise<WhatsAppSendResult> {
     return metaApi.sendInteractiveButtons({
       phoneNumberId: this.phoneNumberId,
@@ -109,6 +113,7 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
     headerText?: string
     footerText?: string
     contextMessageId?: string
+    contextFromMe?: boolean
   }): Promise<WhatsAppSendResult> {
     return metaApi.sendInteractiveList({
       phoneNumberId: this.phoneNumberId,
