@@ -10,6 +10,8 @@ import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import type { AutomationTriggerType } from '@/types'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
+import { decrypt } from '@/lib/whatsapp/encryption'
+import { EvolutionWhatsAppProvider } from '@/lib/whatsapp/evolution-provider'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _adminClient: any = null
@@ -79,24 +81,51 @@ export async function POST(request: Request) {
 
       const isGroup = key.remoteJid.includes('@g.us')
       const senderPhone = isGroup ? key.remoteJid : key.remoteJid.split('@')[0]
-      let contactName = item.pushName || (isGroup ? `Grupo ${key.remoteJid.split('@')[0]}` : senderPhone)
 
-      if (isGroup) {
-        contactName =
-          item.groupName ||
-          item.subject ||
-          data?.groupSubject ||
-          data?.subject ||
-          contactName
-      }
+      let explicitGroupName =
+        item.groupName ||
+        item.subject ||
+        data?.groupSubject ||
+        data?.subject ||
+        null
 
-      const avatarUrl =
+      let avatarUrl =
         item.profilePicUrl ||
         item.pictureUrl ||
         item.profilePictureUrl ||
         data?.profilePicUrl ||
         data?.pictureUrl ||
         null
+
+      if (config.evolution_api_url && config.evolution_api_key) {
+        try {
+          const rawApiKey = decrypt(config.evolution_api_key as string)
+          if (rawApiKey) {
+            const provider = new EvolutionWhatsAppProvider(
+              config.evolution_api_url as string,
+              rawApiKey,
+              instance
+            )
+            if (isGroup && !explicitGroupName) {
+              const groupInfo = await provider.getGroupInfo(senderPhone)
+              if (groupInfo?.subject) {
+                explicitGroupName = groupInfo.subject
+              }
+              if (groupInfo?.pictureUrl) {
+                avatarUrl = groupInfo.pictureUrl
+              }
+            }
+            if (!avatarUrl) {
+              avatarUrl = await provider.getProfilePictureUrl(senderPhone)
+            }
+          }
+        } catch {
+          /* ignore fetch errors */
+        }
+      }
+
+      const contactName = explicitGroupName || (isGroup ? `Grupo ${key.remoteJid.split('@')[0]}` : item.pushName || senderPhone)
+      const isExplicitName = Boolean(explicitGroupName) || !isGroup
       const fromMe = key.fromMe === true
 
       // Encontrar ou criar contato no banco de dados
@@ -105,7 +134,8 @@ export async function POST(request: Request) {
         config.user_id,
         senderPhone,
         contactName,
-        avatarUrl
+        avatarUrl,
+        isExplicitName
       )
       if (!contactOutcome) {
         return NextResponse.json({ error: 'Failed to resolve contact' }, { status: 200 })

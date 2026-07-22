@@ -987,6 +987,7 @@ export async function findOrCreateContact(
   phone: string,
   name: string,
   avatarUrl?: string | null,
+  isExplicitName?: boolean,
 ): Promise<ContactOutcome | null> {
   // Find an existing contact for this account by phone. The shared
   // helper pre-filters in SQL by the last-8-digit suffix (so we don't
@@ -1000,10 +1001,14 @@ export async function findOrCreateContact(
     phone,
   )
 
+  const isGroup = phone.includes('@g.us')
+
   if (existingContact) {
     const updates: Record<string, unknown> = {}
     if (name && name !== existingContact.name) {
-      updates.name = name
+      if (!isGroup || isExplicitName) {
+        updates.name = name
+      }
     }
     if (avatarUrl && avatarUrl !== existingContact.avatar_url) {
       updates.avatar_url = avatarUrl

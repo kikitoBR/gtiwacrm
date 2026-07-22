@@ -380,6 +380,45 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     return parts.join('\n')
   }
 
+  async getProfilePictureUrl(phoneOrJid: string): Promise<string | null> {
+    try {
+      const number = this.formatPhone(phoneOrJid)
+      const data = (await this.request('/chat/fetchProfilePictureUrl', { number })) as {
+        profilePictureUrl?: string
+        pictureUrl?: string
+        url?: string
+        picture?: string
+      }
+      return (
+        data?.profilePictureUrl ||
+        data?.pictureUrl ||
+        data?.url ||
+        data?.picture ||
+        null
+      )
+    } catch {
+      return null
+    }
+  }
+
+  async getGroupInfo(groupJid: string): Promise<{ subject?: string; pictureUrl?: string } | null> {
+    try {
+      const data = (await this.request('/group/findGroupInfos', { groupJid })) as {
+        subject?: string
+        name?: string
+        pictureUrl?: string
+        profilePictureUrl?: string
+        url?: string
+      }
+      return {
+        subject: data?.subject || data?.name || undefined,
+        pictureUrl: data?.pictureUrl || data?.profilePictureUrl || data?.url || undefined,
+      }
+    } catch {
+      return null
+    }
+  }
+
   private formatPhone(phone: string): string {
     if (phone.includes('@g.us')) return phone
     // A Evolution API geralmente prefere números formatados apenas com números sem '+' ou '@s.whatsapp.net'
