@@ -244,6 +244,9 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       })),
     }
 
+    if (!body.title) delete body.title
+    if (!body.footer) delete body.footer
+
     if (args.contextMessageId) {
       body.options = {
         quoted: {
@@ -254,9 +257,19 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       }
     }
 
-    const data = await this.request('/message/sendButtons', body)
-    const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
-    return { messageId }
+    try {
+      const data = await this.request('/message/sendButtons', body)
+      const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
+      return { messageId }
+    } catch (err) {
+      console.warn('[Evolution API] sendButtons failed, falling back to formatted text message:', err)
+      const fallbackText = this.formatButtonsAsText(args)
+      return this.sendTextMessage({
+        to: toPhone,
+        text: fallbackText,
+        contextMessageId: args.contextMessageId,
+      })
+    }
   }
 
   async sendInteractiveList(args: {
@@ -285,6 +298,9 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       })),
     }
 
+    if (!body.title) delete body.title
+    if (!body.footer) delete body.footer
+
     if (args.contextMessageId) {
       body.options = {
         quoted: {
@@ -295,9 +311,73 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       }
     }
 
-    const data = await this.request('/message/sendList', body)
-    const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
-    return { messageId }
+    try {
+      const data = await this.request('/message/sendList', body)
+      const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
+      return { messageId }
+    } catch (err) {
+      console.warn('[Evolution API] sendList failed, falling back to formatted text message:', err)
+      const fallbackText = this.formatListAsText(args)
+      return this.sendTextMessage({
+        to: toPhone,
+        text: fallbackText,
+        contextMessageId: args.contextMessageId,
+      })
+    }
+  }
+
+  private formatButtonsAsText(args: {
+    bodyText: string
+    buttons: InteractiveButton[]
+    headerText?: string
+    footerText?: string
+  }): string {
+    const parts: string[] = []
+    if (args.headerText?.trim()) {
+      parts.push(`*${args.headerText.trim()}*`)
+    }
+    parts.push(args.bodyText)
+
+    parts.push('\n🔘 *Opções:*')
+    args.buttons.forEach((btn, idx) => {
+      parts.push(`${idx + 1}. *${btn.title}*`)
+    })
+
+    if (args.footerText?.trim()) {
+      parts.push(`\n_${args.footerText.trim()}_`)
+    }
+
+    return parts.join('\n')
+  }
+
+  private formatListAsText(args: {
+    bodyText: string
+    buttonLabel: string
+    sections: InteractiveListSection[]
+    headerText?: string
+    footerText?: string
+  }): string {
+    const parts: string[] = []
+    if (args.headerText?.trim()) {
+      parts.push(`*${args.headerText.trim()}*`)
+    }
+    parts.push(args.bodyText)
+
+    args.sections.forEach((sec) => {
+      if (sec.title?.trim()) {
+        parts.push(`\n📋 *${sec.title.trim()}*`)
+      }
+      sec.rows.forEach((row, idx) => {
+        const desc = row.description ? ` - ${row.description}` : ''
+        parts.push(`${idx + 1}. *${row.title}*${desc}`)
+      })
+    })
+
+    if (args.footerText?.trim()) {
+      parts.push(`\n_${args.footerText.trim()}_`)
+    }
+
+    return parts.join('\n')
   }
 
   private formatPhone(phone: string): string {
