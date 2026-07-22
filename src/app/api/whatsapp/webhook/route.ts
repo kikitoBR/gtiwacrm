@@ -985,7 +985,8 @@ export async function findOrCreateContact(
   accountId: string,
   configOwnerUserId: string,
   phone: string,
-  name: string
+  name: string,
+  avatarUrl?: string | null,
 ): Promise<ContactOutcome | null> {
   // Find an existing contact for this account by phone. The shared
   // helper pre-filters in SQL by the last-8-digit suffix (so we don't
@@ -1000,11 +1001,18 @@ export async function findOrCreateContact(
   )
 
   if (existingContact) {
-    // Update name if it changed
+    const updates: Record<string, unknown> = {}
     if (name && name !== existingContact.name) {
+      updates.name = name
+    }
+    if (avatarUrl && avatarUrl !== existingContact.avatar_url) {
+      updates.avatar_url = avatarUrl
+    }
+    if (Object.keys(updates).length > 0) {
+      updates.updated_at = new Date().toISOString()
       await supabaseAdmin()
         .from('contacts')
-        .update({ name, updated_at: new Date().toISOString() })
+        .update(updates)
         .eq('id', existingContact.id)
     }
     return { contact: existingContact, wasCreated: false }
@@ -1021,6 +1029,7 @@ export async function findOrCreateContact(
       user_id: configOwnerUserId,
       phone,
       name: name || phone,
+      avatar_url: avatarUrl || null,
     })
     .select()
     .single()

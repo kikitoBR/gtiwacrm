@@ -79,6 +79,13 @@ export async function POST(request: Request) {
 
       const senderPhone = key.remoteJid.split('@')[0]
       const contactName = item.pushName || senderPhone
+      const avatarUrl =
+        item.profilePicUrl ||
+        item.pictureUrl ||
+        item.profilePictureUrl ||
+        data?.profilePicUrl ||
+        data?.pictureUrl ||
+        null
       const fromMe = key.fromMe === true
 
       // Encontrar ou criar contato no banco de dados
@@ -86,7 +93,8 @@ export async function POST(request: Request) {
         config.account_id,
         config.user_id,
         senderPhone,
-        contactName
+        contactName,
+        avatarUrl
       )
       if (!contactOutcome) {
         return NextResponse.json({ error: 'Failed to resolve contact' }, { status: 200 })
