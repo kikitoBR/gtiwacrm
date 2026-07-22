@@ -16,16 +16,26 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
 
   private async request(
     endpoint: string,
-    body: Record<string, unknown>
-  ): Promise<{ key?: { id?: string }; messageId?: string }> {
-    const url = `${this.apiUrl}${endpoint}/${this.instanceName}`
+    body?: Record<string, unknown>,
+    method: string = 'POST'
+  ): Promise<any> {
+    let url = `${this.apiUrl}${endpoint}/${this.instanceName}`
+    if (method === 'GET' && body) {
+      const params = new URLSearchParams()
+      for (const [key, val] of Object.entries(body)) {
+        if (val !== undefined && val !== null) params.append(key, String(val))
+      }
+      const qs = params.toString()
+      if (qs) url += `?${qs}`
+    }
+
     const response = await fetch(url, {
-      method: 'POST',
+      method,
       headers: {
         'Content-Type': 'application/json',
         apikey: this.apiKey,
       },
-      body: JSON.stringify(body),
+      body: method !== 'GET' && body ? JSON.stringify(body) : undefined,
     })
 
     if (!response.ok) {
@@ -383,11 +393,11 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
   async getProfilePictureUrl(phoneOrJid: string): Promise<string | null> {
     try {
       const number = this.formatPhone(phoneOrJid)
-      const data = (await this.request('/chat/fetchProfilePictureUrl', { number })) as {
-        profilePictureUrl?: string
-        pictureUrl?: string
-        url?: string
-        picture?: string
+      let data: any = null
+      try {
+        data = await this.request('/chat/fetchProfilePictureUrl', { number }, 'POST')
+      } catch {
+        data = await this.request('/chat/fetchProfilePictureUrl', { number }, 'GET')
       }
       return (
         data?.profilePictureUrl ||
@@ -403,15 +413,27 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
 
   async getGroupInfo(groupJid: string): Promise<{ subject?: string; pictureUrl?: string } | null> {
     try {
-      const data = (await this.request('/group/findGroupInfos', { groupJid })) as {
-        subject?: string
-        name?: string
-        pictureUrl?: string
-        profilePictureUrl?: string
-        url?: string
+      let data: any = null
+      try {
+        data = await this.request('/group/findGroupInfos', { groupJid }, 'GET')
+      } catch {
+        try {
+          data = await this.request('/group/findGroupInfos', { groupJid }, 'POST')
+        } catch {
+          // Fallback to fetchAllGroups
+          const groups = (await this.request('/group/fetchAllGroups', { getParticipants: false }, 'GET')) as Array<{
+            id?: string
+            subject?: string
+            name?: string
+            pictureUrl?: string
+          }>
+          if (Array.isArray(groups)) {
+            data = groups.find((g) => g.id === groupJid)
+          }
+        }
       }
       return {
-        subject: data?.subject || data?.name || undefined,
+        subject: data?.subject || data?.name || data?.groupSubject || undefined,
         pictureUrl: data?.pictureUrl || data?.profilePictureUrl || data?.url || undefined,
       }
     } catch {
