@@ -65,13 +65,16 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     }
 
     if (args.contextMessageId) {
-      body.options = {
-        quoted: {
-          key: {
-            id: args.contextMessageId,
-          },
+      const quotedObj = {
+        key: {
+          id: args.contextMessageId,
         },
       }
+      body.quoted = quotedObj
+      body.options = {
+        quoted: quotedObj,
+      }
+      body.quotedMessageId = args.contextMessageId
     }
 
     const data = await this.request('/message/sendText', body)
@@ -98,7 +101,10 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
           audio: args.link,
         }
         if (args.contextMessageId) {
-          pttBody.options = { quoted: { key: { id: args.contextMessageId } } }
+          const quotedObj = { key: { id: args.contextMessageId } }
+          pttBody.quoted = quotedObj
+          pttBody.options = { quoted: quotedObj }
+          pttBody.quotedMessageId = args.contextMessageId
         }
         const data = await this.request('/message/sendWhatsAppAudio', pttBody)
         const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
@@ -120,13 +126,10 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     }
 
     if (args.contextMessageId) {
-      body.options = {
-        quoted: {
-          key: {
-            id: args.contextMessageId,
-          },
-        },
-      }
+      const quotedObj = { key: { id: args.contextMessageId } }
+      body.quoted = quotedObj
+      body.options = { quoted: quotedObj }
+      body.quotedMessageId = args.contextMessageId
     }
 
     const data = await this.request('/message/sendMedia', body)
@@ -236,9 +239,19 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
   }): Promise<WhatsAppSendResult> {
     const toPhone = this.formatPhone(args.to)
     const body = {
-      number: toPhone,
+      reactionMessage: {
+        key: {
+          remoteJid: toPhone,
+          id: args.targetMessageId,
+        },
+        reaction: args.emoji,
+      },
       reaction: args.emoji,
       messageId: args.targetMessageId,
+      key: {
+        remoteJid: toPhone,
+        id: args.targetMessageId,
+      },
     }
 
     const data = await this.request('/message/sendReaction', body)
