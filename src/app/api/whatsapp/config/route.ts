@@ -21,7 +21,7 @@ async function resolveAccountId(
   return data.account_id as string
 }
 
-let _adminClient: any = null
+let _adminClient: ReturnType<typeof createAdminClient> | null = null
 function supabaseAdmin() {
   if (!_adminClient) {
     _adminClient = createAdminClient(
@@ -144,11 +144,12 @@ export async function GET() {
           reason: isConnected ? null : 'disconnected',
           message: isConnected ? '' : `WhatsApp connection is ${state || 'disconnected'}. Please scan the QR Code.`,
         })
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const errorObj = err as Error
         return NextResponse.json({
           connected: false,
           reason: 'evolution_api_error',
-          message: `Failed to connect to Evolution API: ${err.message || err}`,
+          message: `Failed to connect to Evolution API: ${errorObj?.message || err}`,
         })
       }
     }
@@ -284,8 +285,9 @@ export async function POST(request: Request) {
             { status: 400 }
           )
         }
-      } catch (err: any) {
-        console.warn('Could not contact Evolution API during validation:', err.message)
+      } catch (err: unknown) {
+        const errorObj = err as Error
+        console.warn('Could not contact Evolution API during validation:', errorObj?.message)
         // We warn but don't strictly fail block if the server is temporarily offline, to allow saving.
       }
 

@@ -7,9 +7,11 @@ import {
 } from '../route'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
+import type { AutomationTriggerType } from '@/types'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _adminClient: any = null
 function supabaseAdmin() {
   if (!_adminClient) {
@@ -31,7 +33,7 @@ export async function POST(request: Request) {
     }
 
     // Buscar a conta correspondente ao instance name no whatsapp_config (salvo em texto claro)
-    const { data: config, error: configError } = await supabaseAdmin()
+    const { data: configRaw, error: configError } = await supabaseAdmin()
       .from('whatsapp_config')
       .select('*')
       .eq('evolution_instance_name', instance)
@@ -41,6 +43,8 @@ export async function POST(request: Request) {
       console.error('[webhook/evolution] Error fetching config:', configError)
       return NextResponse.json({ error: 'Database error' }, { status: 500 })
     }
+
+    const config = configRaw as { account_id: string; user_id: string; [key: string]: unknown } | null
 
     if (!config) {
       console.warn('[webhook/evolution] No config found for instance:', instance)
@@ -264,14 +268,14 @@ export async function POST(request: Request) {
             for (const triggerType of triggers) {
               runAutomationsForTrigger({
                 accountId: config.account_id,
-                triggerType: triggerType as any,
+                triggerType: triggerType as AutomationTriggerType,
                 contactId: contactRecord.id,
                 context: {
                   message_text: contentText,
                   conversation_id: conversation.id,
                   interactive_reply_id: interactiveReplyId || undefined,
                 },
-              }).catch((err: any) => console.error('[webhook/evolution/automations] failed:', err))
+              }).catch((err: unknown) => console.error('[webhook/evolution/automations] failed:', err))
             }
 
             // Reposta Automática de IA
@@ -281,7 +285,7 @@ export async function POST(request: Request) {
                 conversationId: conversation.id,
                 contactId: contactRecord.id,
                 configOwnerUserId: config.user_id,
-              }).catch((err: any) => console.error('[webhook/evolution/ai] failed:', err))
+              }).catch((err: unknown) => console.error('[webhook/evolution/ai] failed:', err))
             }
           }
 
@@ -292,7 +296,7 @@ export async function POST(request: Request) {
             whatsapp_message_id: messageId,
             content_type: contentType,
             text: contentText,
-          }).catch((err: any) => console.error('[webhook/evolution/dispatcher] failed:', err))
+          }).catch((err: unknown) => console.error('[webhook/evolution/dispatcher] failed:', err))
         }
       }
     }
@@ -346,15 +350,16 @@ export async function POST(request: Request) {
           await dispatchWebhookEvent(supabaseAdmin(), config.account_id, 'message.status_updated', {
             whatsapp_message_id: key.id,
             status: mappedStatus,
-          }).catch((err: any) => console.error('[webhook/evolution/dispatcher/status] failed:', err))
+          }).catch((err: unknown) => console.error('[webhook/evolution/dispatcher/status] failed:', err))
         }
       }
     }
 
     return NextResponse.json({ status: 'success' }, { status: 200 })
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorObj = err as Error
     console.error('[webhook/evolution] Fatal error:', err)
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: errorObj?.message || 'Internal server error' }, { status: 500 })
   }
 }
 

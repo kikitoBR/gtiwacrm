@@ -14,7 +14,10 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     this.instanceName = instanceName
   }
 
-  private async request(endpoint: string, body: Record<string, any>): Promise<any> {
+  private async request(
+    endpoint: string,
+    body: Record<string, unknown>
+  ): Promise<{ key?: { id?: string }; messageId?: string }> {
     const url = `${this.apiUrl}${endpoint}/${this.instanceName}`
     const response = await fetch(url, {
       method: 'POST',
@@ -45,7 +48,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     contextMessageId?: string
   }): Promise<WhatsAppSendResult> {
     const toPhone = this.formatPhone(args.to)
-    const body: Record<string, any> = {
+    const body: Record<string, unknown> = {
       number: toPhone,
       text: args.text,
       linkPreview: true,
@@ -83,7 +86,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       mediaType = 'audio'
     }
 
-    const body: Record<string, any> = {
+    const body: Record<string, unknown> = {
       number: toPhone,
       mediatype: mediaType,
       media: args.link,
@@ -122,7 +125,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     // Nós emulamos os templates interpolando as variáveis diretamente na mensagem de texto ou mídia.
     const toPhone = this.formatPhone(args.to)
 
-    const { to, templateName, template, messageParams } = args
+    const { templateName, template, messageParams } = args
 
     if (!template) {
       // Fallback simples para caso não haja o objeto do template: envia como texto simples listando os parametros
@@ -230,7 +233,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     contextMessageId?: string
   }): Promise<WhatsAppSendResult> {
     const toPhone = this.formatPhone(args.to)
-    const body: Record<string, any> = {
+    const body: Record<string, unknown> = {
       number: toPhone,
       title: args.headerText || '',
       description: args.bodyText,
@@ -266,7 +269,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     contextMessageId?: string
   }): Promise<WhatsAppSendResult> {
     const toPhone = this.formatPhone(args.to)
-    const body: Record<string, any> = {
+    const body: Record<string, unknown> = {
       number: toPhone,
       title: args.headerText || '',
       description: args.bodyText,

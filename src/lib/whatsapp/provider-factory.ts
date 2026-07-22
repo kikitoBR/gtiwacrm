@@ -7,17 +7,17 @@ import { EvolutionWhatsAppProvider } from './evolution-provider'
  * Instancia o provedor de WhatsApp correto com base nas configurações da conta.
  * Descriptografa as chaves de API necessárias dinamicamente.
  */
-export function getWhatsAppProvider(config: any): WhatsAppProvider {
-  const providerType = config.provider_type || 'meta'
+export function getWhatsAppProvider(config: Record<string, unknown>): WhatsAppProvider {
+  const providerType = (config.provider_type as string) || 'meta'
 
   if (providerType === 'evolution') {
     if (!config.evolution_api_url) {
       throw new Error('Evolution API URL is not configured.')
     }
-    const decryptedApiKey = config.evolution_api_key ? decrypt(config.evolution_api_key) : ''
-    const instanceName = config.evolution_instance_name || ''
+    const decryptedApiKey = config.evolution_api_key ? decrypt(config.evolution_api_key as string) : ''
+    const instanceName = (config.evolution_instance_name as string) || ''
     return new EvolutionWhatsAppProvider(
-      config.evolution_api_url,
+      config.evolution_api_url as string,
       decryptedApiKey,
       instanceName
     )
@@ -27,6 +27,6 @@ export function getWhatsAppProvider(config: any): WhatsAppProvider {
   if (!config.phone_number_id || !config.access_token) {
     throw new Error('Meta WhatsApp is not configured correctly.')
   }
-  const accessToken = decrypt(config.access_token)
-  return new MetaWhatsAppProvider(config.phone_number_id, accessToken)
+  const accessToken = decrypt(config.access_token as string)
+  return new MetaWhatsAppProvider(config.phone_number_id as string, accessToken)
 }
