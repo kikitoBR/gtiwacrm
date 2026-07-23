@@ -20,6 +20,7 @@ import { ReplyQuote } from "./reply-quote";
 import { MessageReactions } from "./message-reactions";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
 import { useTranslations } from "next-intl";
+import { parseGroupMessage, getParticipantColor } from "@/lib/whatsapp/group-utils";
 
 interface MessageBubbleProps {
   message: Message;
@@ -28,6 +29,7 @@ interface MessageBubbleProps {
   reactions?: MessageReaction[];
   currentUserId?: string;
   onToggleReaction?: (emoji: string) => void;
+  isGroup?: boolean;
 }
 
 function StatusIcon({ status }: { status: Message["status"] }) {
@@ -264,78 +266,112 @@ export function MessageBubble({
   reactions,
   currentUserId,
   onToggleReaction,
+  isGroup = false,
 }: MessageBubbleProps) {
   const t = useTranslations("Inbox.bubble");
 
   const isAgent = message.sender_type === "agent" || message.sender_type === "bot";
   const time = format(new Date(message.created_at), "HH:mm");
 
-  // Row alignment + width cap are owned by <MessageActions> so its hover
-  // group matches the bubble's content area, not the full row.
+  const parsed = isGroup && !isAgent
+    ? parseGroupMessage(message.content_text)
+    : { participantName: null, cleanText: message.content_text || "" };
+
+  const participantName = parsed.participantName;
+  const displayMessage: Message = {
+    ...message,
+    content_text: parsed.cleanText,
+  };
+  const participantColor = participantName ? getParticipantColor(participantName) : null;
+
   return (
     <div
       className={cn(
-        "flex flex-col",
-        isAgent ? "items-end" : "items-start",
+        "flex items-end gap-2",
+        isAgent ? "justify-end" : "justify-start",
       )}
     >
+      {isGroup && !isAgent && (
+        <div
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white shadow-sm mb-1 select-none"
+          style={{ backgroundColor: participantColor || "#0284c7" }}
+          title={participantName || "Participant"}
+        >
+          {(participantName || "?").charAt(0).toUpperCase()}
+        </div>
+      )}
       <div
         className={cn(
-          "relative rounded-2xl px-3 py-2",
-          isAgent
-            ? "rounded-br-md bg-primary text-primary-foreground"
-            : "rounded-bl-md bg-muted text-foreground",
+          "flex flex-col min-w-0",
+          isAgent ? "items-end" : "items-start",
         )}
       >
-        {reply && (
-          <ReplyQuote
-            authorLabel={reply.authorLabel}
-            preview={reply.preview}
-            onPrimary={isAgent}
-          />
-        )}
-        <MessageContent message={message} t={t} />
         <div
           className={cn(
-            "mt-1 flex items-center gap-1",
-            isAgent ? "justify-end" : "justify-start",
+            "relative rounded-2xl px-3 py-2 min-w-0 max-w-full",
+            isAgent
+              ? "rounded-br-md bg-primary text-primary-foreground"
+              : "rounded-bl-md bg-muted text-foreground",
           )}
         >
-          {/* AI badge — only on replies the auto-reply bot generated
-              (always outbound, so it sits on the primary fill). Lets
-              agents tell an AI reply from their own / a Flow's at a
-              glance. */}
-          {message.ai_generated && (
-            <span
-              className="inline-flex items-center gap-0.5 rounded-full bg-primary-foreground/20 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-primary-foreground"
-              title={t("aiBadgeTitle")}
+          {isGroup && !isAgent && participantName && (
+            <div
+              className="mb-1 text-xs font-semibold select-none"
+              style={{ color: participantColor || "#0284c7" }}
             >
-              <Sparkles className="h-2.5 w-2.5" />
-              {t("aiBadge")}
-            </span>
+              ~ {participantName}
+            </div>
           )}
-          <span
+          {reply && (
+            <ReplyQuote
+              authorLabel={reply.authorLabel}
+              preview={reply.preview}
+              onPrimary={isAgent}
+            />
+          )}
+          <MessageContent message={displayMessage} t={t} />
+          <div
             className={cn(
-              "text-[10px]",
-              // Outbound bubbles sit on the primary fill, so the
-              // timestamp must read against that (not the neutral
-              // foreground) — otherwise it goes low-contrast in light
-              // mode. Inbound bubbles use the muted surface.
-              isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
+              "mt-1 flex items-center gap-1",
+              isAgent ? "justify-end" : "justify-start",
             )}
           >
-            {time}
-          </span>
-          {isAgent && <StatusIcon status={message.status} />}
+            {/* AI badge — only on replies the auto-reply bot generated
+                (always outbound, so it sits on the primary fill). Lets
+                agents tell an AI reply from their own / a Flow's at a
+                glance. */}
+            {message.ai_generated && (
+              <span
+                className="inline-flex items-center gap-0.5 rounded-full bg-primary-foreground/20 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-primary-foreground"
+                title={t("aiBadgeTitle")}
+              >
+                <Sparkles className="h-2.5 w-2.5" />
+                {t("aiBadge")}
+              </span>
+            )}
+            <span
+              className={cn(
+                "text-[10px]",
+                // Outbound bubbles sit on the primary fill, so the
+                // timestamp must read against that (not the neutral
+                // foreground) — otherwise it goes low-contrast in light
+                // mode. Inbound bubbles use the muted surface.
+                isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
+              )}
+            >
+              {time}
+            </span>
+            {isAgent && <StatusIcon status={message.status} />}
+          </div>
         </div>
+        {reactions && reactions.length > 0 && onToggleReaction && (
+          <MessageReactions
+            reactions={reactions}
+            currentUserId={currentUserId}
+            onToggle={onToggleReaction}
+          />
+        )}
       </div>
-      {reactions && reactions.length > 0 && onToggleReaction && (
-        <MessageReactions
-          reactions={reactions}
-          currentUserId={currentUserId}
-          onToggle={onToggleReaction}
-        />
-      )}
     </div>
   );
 }

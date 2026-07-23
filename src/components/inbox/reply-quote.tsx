@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/types";
 import { useTranslations } from "next-intl";
+import { parseGroupMessage } from "@/lib/whatsapp/group-utils";
 
 interface ReplyQuoteProps {
   /** Sender label of the quoted message: "You" for our own messages,
@@ -77,7 +78,10 @@ export function ReplyQuote({
 
 /** Build the one-line preview text shown inside a reply quote. */
 export function buildReplyPreview(message: Message, t: ReturnType<typeof useTranslations>): string {
-  if (message.content_text) return message.content_text;
+  if (message.content_text) {
+    const { cleanText } = parseGroupMessage(message.content_text);
+    return cleanText;
+  }
   switch (message.content_type) {
     case "image":
       return t("photo");

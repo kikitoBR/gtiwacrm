@@ -41,6 +41,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageBubble } from "./message-bubble";
 import { MessageActions } from "./message-actions";
+import { parseGroupMessage } from "@/lib/whatsapp/group-utils";
 import {
   MessageComposer,
   CHAT_MEDIA_BUCKET,
@@ -737,7 +738,10 @@ export function MessageThread({
     (m: Message): string => {
       const isAgentMsg =
         m.sender_type === "agent" || m.sender_type === "bot";
-      return isAgentMsg ? "You" : contactDisplayName;
+      if (isAgentMsg) return "You";
+      const { participantName } = parseGroupMessage(m.content_text);
+      if (participantName) return participantName;
+      return contactDisplayName;
     },
     [contactDisplayName],
   );
@@ -857,6 +861,7 @@ export function MessageThread({
     );
   }
 
+  const isGroup = contact.phone.includes("@g.us");
   const displayName = contact.name || contact.phone;
   const messageGroups = groupMessagesByDate(messages);
   const currentStatus = STATUS_OPTIONS.find(
@@ -1130,6 +1135,7 @@ export function MessageThread({
                           reactions={msgReactions}
                           currentUserId={user?.id}
                           onToggleReaction={handlePillToggle}
+                          isGroup={isGroup}
                         />
                       </MessageActions>
                     );
