@@ -129,6 +129,10 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
   const displayName = contact.name || contact.phone;
   const initials = displayName.charAt(0).toUpperCase();
+  const rawDigits = contact.phone ? contact.phone.replace(/\D/g, "") : "";
+  const displayPhone = rawDigits.length >= 8
+    ? (contact.phone.startsWith("+") ? contact.phone : `+${rawDigits}`)
+    : "Não informado";
 
   return (
     <div className="flex h-full w-70 flex-col border-l border-border bg-card">
@@ -136,7 +140,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         <div className="p-4">
           {/* Contact Info */}
           <div className="flex flex-col items-center text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-lg font-semibold text-foreground">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-lg font-semibold text-foreground overflow-hidden">
               {contact.avatar_url ? (
                 <img
                   src={contact.avatar_url}
@@ -159,14 +163,17 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           <div className="mt-4 space-y-2">
             <button
               onClick={handleCopyPhone}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted"
+              disabled={rawDigits.length < 8}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted disabled:opacity-70 disabled:cursor-not-allowed"
             >
               <Phone className="h-4 w-4 text-muted-foreground" />
-              <span className="flex-1 text-left">{contact.phone}</span>
-              {copied ? (
-                <Check className="h-3 w-3 text-primary" />
-              ) : (
-                <Copy className="h-3 w-3 text-muted-foreground" />
+              <span className="flex-1 text-left">{displayPhone}</span>
+              {rawDigits.length >= 8 && (
+                copied ? (
+                  <Check className="h-3 w-3 text-primary" />
+                ) : (
+                  <Copy className="h-3 w-3 text-muted-foreground" />
+                )
               )}
             </button>
 

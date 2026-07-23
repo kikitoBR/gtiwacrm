@@ -282,8 +282,26 @@ export async function POST(request: Request) {
 
       if (isGroup && !fromMe) {
         const pRaw = item.participant || key.participant || ''
-        const pPhone = pRaw ? pRaw.split('@')[0].split(':')[0] : ''
-        const pName = item.pushName || pPhone
+        let pPhone = pRaw ? pRaw.split('@')[0].split(':')[0].replace(/\D/g, '') : ''
+        const pName = item.pushName || (pPhone ? `+${pPhone}` : 'Participant')
+
+        // Resolve LID JIDs (e.g. 22523093737506@lid) to real WhatsApp phone numbers
+        if (pPhone && (pRaw.includes('@lid') || pPhone.length > 13)) {
+          try {
+            const provider = getWhatsAppProvider(config)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const provAny = provider as any
+            if (typeof provAny.getGroupParticipantsMap === 'function') {
+              const partMap = await provAny.getGroupParticipantsMap(key.remoteJid)
+              const mapped = partMap.get(pPhone)
+              if (mapped?.phone) {
+                pPhone = mapped.phone
+              }
+            }
+          } catch {
+            /* ignore group map fetch error */
+          }
+        }
 
         if (pPhone && pPhone !== senderPhone) {
           void findOrCreateContact(
@@ -295,20 +313,30 @@ export async function POST(request: Request) {
             true
           ).then(async (outcome) => {
             const pContact = outcome?.contact
-            if (pContact && !pContact.avatar_url) {
-              try {
-                const provider = getWhatsAppProvider(config)
-                if ('getProfilePictureUrl' in provider && typeof provider.getProfilePictureUrl === 'function') {
-                  const pic = await provider.getProfilePictureUrl(pPhone)
-                  if (pic) {
-                    await supabaseAdmin()
-                      .from('contacts')
-                      .update({ avatar_url: pic })
-                      .eq('id', pContact.id)
+            if (pContact) {
+              if (item.pushName && pContact.name !== item.pushName) {
+                await supabaseAdmin()
+                  .from('contacts')
+                  .update({ name: item.pushName })
+                  .eq('id', pContact.id)
+              }
+              if (!pContact.avatar_url) {
+                try {
+                  const provider = getWhatsAppProvider(config)
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const provAny = provider as any
+                  if (typeof provAny.getProfilePictureUrl === 'function') {
+                    const pic = await provAny.getProfilePictureUrl(pPhone)
+                    if (pic) {
+                      await supabaseAdmin()
+                        .from('contacts')
+                        .update({ avatar_url: pic })
+                        .eq('id', pContact.id)
+                    }
                   }
+                } catch {
+                  /* ignore avatar fetch error */
                 }
-              } catch {
-                /* ignore avatar fetch error */
               }
             }
           }).catch(() => {})

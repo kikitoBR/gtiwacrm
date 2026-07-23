@@ -478,6 +478,45 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     }
   }
 
+  async getGroupParticipantsMap(groupJid: string): Promise<Map<string, { phone: string; lid?: string }>> {
+    const map = new Map<string, { phone: string; lid?: string }>()
+    try {
+      let data: Record<string, unknown> | null = null
+      try {
+        data = await this.request('/group/findGroupInfos', { groupJid }, 'GET')
+      } catch {
+        try {
+          data = await this.request('/group/findGroupInfos', { groupJid }, 'POST')
+        } catch {
+          /* ignore */
+        }
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const participants = (data?.participants || data?.members) as any[]
+      if (Array.isArray(participants)) {
+        for (const p of participants) {
+          const rawId = typeof p === 'string' ? p : p?.id || p?.jid || ''
+          const rawLid = typeof p === 'object' ? p?.lid || '' : ''
+          const phone = rawId.split('@')[0].split(':')[0]
+          const cleanPhone = phone.replace(/\D/g, '')
+          if (cleanPhone) {
+            map.set(cleanPhone, { phone: cleanPhone, lid: rawLid })
+            if (rawLid) {
+              const cleanLid = rawLid.split('@')[0].split(':')[0].replace(/\D/g, '')
+              if (cleanLid) {
+                map.set(cleanLid, { phone: cleanPhone, lid: cleanLid })
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return map
+  }
+
   async getBase64FromMedia(messageItem: Record<string, unknown>): Promise<{ base64?: string; mimeType?: string } | null> {
     try {
       const data = (await this.request('/chat/getBase64FromMediaMessage', {
