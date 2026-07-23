@@ -12,6 +12,7 @@ import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { EvolutionWhatsAppProvider } from '@/lib/whatsapp/evolution-provider'
+import { getWhatsAppProvider } from '@/lib/whatsapp/provider-factory'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _adminClient: any = null
@@ -281,8 +282,38 @@ export async function POST(request: Request) {
 
       if (isGroup && !fromMe) {
         const pRaw = item.participant || key.participant || ''
-        const pPhone = pRaw ? pRaw.split('@')[0] : ''
+        const pPhone = pRaw ? pRaw.split('@')[0].split(':')[0] : ''
         const pName = item.pushName || pPhone
+
+        if (pPhone && pPhone !== senderPhone) {
+          void findOrCreateContact(
+            config.account_id,
+            config.user_id,
+            pPhone,
+            pName,
+            undefined,
+            true
+          ).then(async (outcome) => {
+            const pContact = outcome?.contact
+            if (pContact && !pContact.avatar_url) {
+              try {
+                const provider = getWhatsAppProvider(config)
+                if ('getProfilePictureUrl' in provider && typeof provider.getProfilePictureUrl === 'function') {
+                  const pic = await provider.getProfilePictureUrl(pPhone)
+                  if (pic) {
+                    await supabaseAdmin()
+                      .from('contacts')
+                      .update({ avatar_url: pic })
+                      .eq('id', pContact.id)
+                  }
+                }
+              } catch {
+                /* ignore avatar fetch error */
+              }
+            }
+          }).catch(() => {})
+        }
+
         if (pName && contentText) {
           contentText = `*${pName}:* ${contentText}`
         }

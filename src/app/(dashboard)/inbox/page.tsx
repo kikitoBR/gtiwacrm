@@ -554,6 +554,42 @@ function InboxPageInner() {
     [activeConversation]
   );
 
+  const handleSelectParticipant = useCallback(
+    async (participant: Contact | string) => {
+      if (typeof participant !== "string") {
+        setActiveContact(participant);
+        setContactPanelOpen(true);
+        return;
+      }
+
+      const cleanName = participant.trim();
+      if (!cleanName) return;
+
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("contacts")
+        .select("*")
+        .or(`name.ilike.%${cleanName}%,phone.ilike.%${cleanName}%`)
+        .maybeSingle();
+
+      if (data) {
+        setActiveContact(data as Contact);
+      } else if (activeConversation?.contact) {
+        setActiveContact({
+          id: `transient-${cleanName}`,
+          user_id: activeConversation.user_id,
+          account_id: activeConversation.contact.account_id || "",
+          phone: cleanName,
+          name: cleanName,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
+      setContactPanelOpen(true);
+    },
+    [activeConversation]
+  );
+
   // On mobile (<lg) we show a SINGLE pane — either the list or the
   // thread — rather than cramming both side-by-side. Selecting a
   // conversation slides the thread in; the thread's back button pops
@@ -623,6 +659,7 @@ function InboxPageInner() {
             onRefresh={handleManualRefresh}
             contactPanelOpen={contactPanelOpen}
             onToggleContactPanel={handleToggleContactPanel}
+            onSelectParticipant={handleSelectParticipant}
           />
         </div>
 

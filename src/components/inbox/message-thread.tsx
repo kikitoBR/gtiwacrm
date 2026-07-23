@@ -110,6 +110,7 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
+  onSelectParticipant?: (participant: Contact | string) => void;
 }
 
 function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
@@ -168,6 +169,7 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
+  onSelectParticipant,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tTimer = useTranslations("Inbox.sessionTimer");
@@ -746,6 +748,42 @@ export function MessageThread({
     [contactDisplayName],
   );
 
+  const [participantsMap, setParticipantsMap] = useState<Map<string, Contact>>(new Map());
+  const isGroupChat = contact?.phone?.includes("@g.us") ?? false;
+
+  useEffect(() => {
+    if (!isGroupChat || messages.length === 0) return;
+    const names = new Set<string>();
+    for (const m of messages) {
+      if (m.sender_type === "customer" && m.content_text) {
+        const { participantName } = parseGroupMessage(m.content_text);
+        if (participantName) names.add(participantName);
+      }
+    }
+    if (names.size === 0) return;
+
+    const supabase = createClient();
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("contacts")
+        .select("*")
+        .in("name", Array.from(names));
+      if (!cancelled && data) {
+        const map = new Map<string, Contact>();
+        for (const c of data as Contact[]) {
+          if (c.name) map.set(c.name.toLowerCase(), c);
+          if (c.phone) map.set(c.phone.toLowerCase(), c);
+        }
+        setParticipantsMap(map);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isGroupChat, messages]);
+
   const handleStartReply = useCallback(
     (msg: Message) => {
       setReplyTo({
@@ -899,20 +937,32 @@ export function MessageThread({
               <ArrowLeft className="h-5 w-5" />
             </button>
           )}
-          {contact.avatar_url ? (
-            <img
-              src={contact.avatar_url}
-              alt={displayName}
-              className="h-9 w-9 flex-shrink-0 rounded-full object-cover"
-            />
-          ) : (
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-              {displayName.charAt(0).toUpperCase()}
+          <div
+            className="flex min-w-0 cursor-pointer items-center gap-2 sm:gap-3 hover:opacity-90 transition-opacity"
+            onClick={() => {
+              if (onSelectParticipant && contact) {
+                onSelectParticipant(contact);
+              } else if (onToggleContactPanel && !contactPanelOpen) {
+                onToggleContactPanel();
+              }
+            }}
+            title="Ver dados do contato"
+          >
+            {contact.avatar_url ? (
+              <img
+                src={contact.avatar_url}
+                alt={displayName}
+                className="h-9 w-9 flex-shrink-0 rounded-full object-cover"
+              />
+            ) : (
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
+              <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
             </div>
-          )}
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
-            <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
           </div>
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. */}
@@ -1120,6 +1170,13 @@ export function MessageThread({
                       const next = own?.emoji === emoji ? "" : emoji;
                       void postReaction(msg.id, next);
                     };
+                    const { participantName } = isGroup && msg.sender_type === "customer"
+                      ? parseGroupMessage(msg.content_text)
+                      : { participantName: null };
+                    const participantContact = participantName
+                      ? participantsMap.get(participantName.toLowerCase()) ?? null
+                      : null;
+
                     return (
                       <MessageActions
                         key={msg.id}
@@ -1136,6 +1193,8 @@ export function MessageThread({
                           currentUserId={user?.id}
                           onToggleReaction={handlePillToggle}
                           isGroup={isGroup}
+                          participantContact={participantContact}
+                          onSelectParticipant={onSelectParticipant}
                         />
                       </MessageActions>
                     );

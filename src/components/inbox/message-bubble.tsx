@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import type { Message, MessageReaction } from "@/types";
+import type { Contact, Message, MessageReaction } from "@/types";
 import {
   Clock,
   Check,
@@ -30,6 +30,8 @@ interface MessageBubbleProps {
   currentUserId?: string;
   onToggleReaction?: (emoji: string) => void;
   isGroup?: boolean;
+  participantContact?: Contact | null;
+  onSelectParticipant?: (participant: Contact | string) => void;
 }
 
 function StatusIcon({ status }: { status: Message["status"] }) {
@@ -267,6 +269,8 @@ export function MessageBubble({
   currentUserId,
   onToggleReaction,
   isGroup = false,
+  participantContact,
+  onSelectParticipant,
 }: MessageBubbleProps) {
   const t = useTranslations("Inbox.bubble");
 
@@ -284,6 +288,35 @@ export function MessageBubble({
   };
   const participantColor = participantName ? getParticipantColor(participantName) : null;
 
+  const initialAvatarUrl = participantContact?.avatar_url || null;
+  const [fetchedAvatarUrl, setFetchedAvatarUrl] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState(false);
+  const avatarUrl = initialAvatarUrl || fetchedAvatarUrl;
+
+  useEffect(() => {
+    if (!initialAvatarUrl && (participantContact?.phone || participantName)) {
+      const phoneToQuery = participantContact?.phone || participantName;
+      if (phoneToQuery && phoneToQuery.replace(/\D/g, "").length >= 8) {
+        let cancelled = false;
+        fetch(`/api/whatsapp/contact-avatar?phone=${encodeURIComponent(phoneToQuery)}`)
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => {
+            if (!cancelled && data?.avatar_url) setFetchedAvatarUrl(data.avatar_url);
+          })
+          .catch(() => {});
+        return () => {
+          cancelled = true;
+        };
+      }
+    }
+  }, [initialAvatarUrl, participantContact?.phone, participantName]);
+
+  const handleParticipantClick = () => {
+    if (onSelectParticipant) {
+      onSelectParticipant(participantContact || participantName || "");
+    }
+  };
+
   return (
     <div
       className={cn(
@@ -293,11 +326,21 @@ export function MessageBubble({
     >
       {isGroup && !isAgent && (
         <div
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white shadow-sm mb-1 select-none"
+          className="flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded-full text-[11px] font-bold text-white shadow-sm mb-1 transition-transform hover:scale-105 select-none overflow-hidden"
           style={{ backgroundColor: participantColor || "#0284c7" }}
-          title={participantName || "Participant"}
+          onClick={handleParticipantClick}
+          title={participantName ? `Ver dados de ${participantName}` : "Ver dados do contato"}
         >
-          {(participantName || "?").charAt(0).toUpperCase()}
+          {avatarUrl && !avatarError ? (
+            <img
+              src={avatarUrl}
+              alt={participantName || "Avatar"}
+              className="h-7 w-7 rounded-full object-cover"
+              onError={() => setAvatarError(true)}
+            />
+          ) : (
+            (participantName || "?").charAt(0).toUpperCase()
+          )}
         </div>
       )}
       <div
@@ -316,8 +359,9 @@ export function MessageBubble({
         >
           {isGroup && !isAgent && participantName && (
             <div
-              className="mb-1 text-xs font-semibold select-none"
+              className="mb-1 text-xs font-semibold cursor-pointer hover:underline select-none"
               style={{ color: participantColor || "#0284c7" }}
+              onClick={handleParticipantClick}
             >
               ~ {participantName}
             </div>
