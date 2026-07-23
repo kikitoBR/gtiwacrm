@@ -18,7 +18,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     endpoint: string,
     body?: Record<string, unknown>,
     method: string = 'POST'
-  ): Promise<any> {
+  ): Promise<Record<string, unknown>> {
     let url = `${this.apiUrl}${endpoint}/${this.instanceName}`
     if (method === 'GET' && body) {
       const params = new URLSearchParams()
@@ -52,7 +52,11 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     return response.json()
   }
 
-  private buildQuotedPayload(toPhone: string, contextMessageId?: string, contextFromMe?: boolean) {
+  private buildQuotedPayload(
+    toPhone: string,
+    contextMessageId?: string,
+    contextFromMe?: boolean
+  ): Record<string, unknown> {
     if (!contextMessageId) return {}
     let remoteJid = toPhone
     if (!remoteJid.includes('@')) {
@@ -86,7 +90,10 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       ...this.buildQuotedPayload(toPhone, args.contextMessageId, args.contextFromMe),
     }
 
-    const data = await this.request('/message/sendText', body)
+    const data = (await this.request('/message/sendText', body)) as {
+      key?: { id?: string }
+      messageId?: string
+    }
     // Evolution API typically returns message status inside data.key.id
     const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
     return { messageId }
@@ -112,7 +119,10 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
           audio: args.link,
           ...quotedPayload,
         }
-        const data = await this.request('/message/sendWhatsAppAudio', pttBody)
+        const data = (await this.request('/message/sendWhatsAppAudio', pttBody)) as {
+          key?: { id?: string }
+          messageId?: string
+        }
         const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
         return { messageId }
       } catch (err) {
@@ -132,7 +142,10 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       body.fileName = args.filename
     }
 
-    const data = await this.request('/message/sendMedia', body)
+    const data = (await this.request('/message/sendMedia', body)) as {
+      key?: { id?: string }
+      messageId?: string
+    }
     const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
     return { messageId }
   }
@@ -254,7 +267,10 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       },
     }
 
-    const data = await this.request('/message/sendReaction', body)
+    const data = (await this.request('/message/sendReaction', body)) as {
+      key?: { id?: string }
+      messageId?: string
+    }
     const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
     return { messageId }
   }
@@ -285,7 +301,10 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     if (!body.footer) delete body.footer
 
     try {
-      const data = await this.request('/message/sendButtons', body)
+      const data = (await this.request('/message/sendButtons', body)) as {
+        key?: { id?: string }
+        messageId?: string
+      }
       const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
       return { messageId }
     } catch (err) {
@@ -332,7 +351,10 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     if (!body.footer) delete body.footer
 
     try {
-      const data = await this.request('/message/sendList', body)
+      const data = (await this.request('/message/sendList', body)) as {
+        key?: { id?: string }
+        messageId?: string
+      }
       const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
       return { messageId }
     } catch (err) {
@@ -404,17 +426,17 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
   async getProfilePictureUrl(phoneOrJid: string): Promise<string | null> {
     try {
       const number = this.formatPhone(phoneOrJid)
-      let data: any = null
+      let data: Record<string, unknown> | null = null
       try {
         data = await this.request('/chat/fetchProfilePictureUrl', { number }, 'POST')
       } catch {
         data = await this.request('/chat/fetchProfilePictureUrl', { number }, 'GET')
       }
       return (
-        data?.profilePictureUrl ||
-        data?.pictureUrl ||
-        data?.url ||
-        data?.picture ||
+        (data?.profilePictureUrl as string) ||
+        (data?.pictureUrl as string) ||
+        (data?.url as string) ||
+        (data?.picture as string) ||
         null
       )
     } catch {
@@ -424,7 +446,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
 
   async getGroupInfo(groupJid: string): Promise<{ subject?: string; pictureUrl?: string } | null> {
     try {
-      let data: any = null
+      let data: Record<string, unknown> | null = null
       try {
         data = await this.request('/group/findGroupInfos', { groupJid }, 'GET')
       } catch {
@@ -432,20 +454,20 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
           data = await this.request('/group/findGroupInfos', { groupJid }, 'POST')
         } catch {
           // Fallback to fetchAllGroups
-          const groups = (await this.request('/group/fetchAllGroups', { getParticipants: false }, 'GET')) as Array<{
+          const groups = (await this.request('/group/fetchAllGroups', { getParticipants: false }, 'GET')) as unknown as Array<{
             id?: string
             subject?: string
             name?: string
             pictureUrl?: string
           }>
           if (Array.isArray(groups)) {
-            data = groups.find((g) => g.id === groupJid)
+            data = (groups.find((g) => g.id === groupJid) as Record<string, unknown>) || null
           }
         }
       }
       return {
-        subject: data?.subject || data?.name || data?.groupSubject || undefined,
-        pictureUrl: data?.pictureUrl || data?.profilePictureUrl || data?.url || undefined,
+        subject: (data?.subject as string) || (data?.name as string) || (data?.groupSubject as string) || undefined,
+        pictureUrl: (data?.pictureUrl as string) || (data?.profilePictureUrl as string) || (data?.url as string) || undefined,
       }
     } catch {
       return null
