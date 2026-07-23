@@ -29,28 +29,31 @@ export function getParticipantColor(name: string): string {
 
 export interface ParsedGroupMessage {
   participantName: string | null;
+  participantPhone: string | null;
   cleanText: string;
 }
 
 /**
- * Parses raw message text for `*Participant Name:* Message` patterns
- * introduced by group message webhooks, stripping the prefix and extracting the name.
+ * Parses raw message text for `*Participant Name|Phone:* Message` or `*Participant Name:* Message`
+ * patterns introduced by group message webhooks, stripping the prefix and extracting details.
  */
 export function parseGroupMessage(rawText?: string | null): ParsedGroupMessage {
   if (!rawText) {
-    return { participantName: null, cleanText: "" };
+    return { participantName: null, participantPhone: null, cleanText: "" };
   }
 
-  const match = rawText.match(/^\*([^*]+):\*\s*([\s\S]*)$/);
+  const match = rawText.match(/^\*([^|*]+)(?:\|([^*]+))?:\*\s*([\s\S]*)$/);
   if (match) {
     return {
       participantName: match[1].trim(),
-      cleanText: match[2],
+      participantPhone: match[2]?.trim() || null,
+      cleanText: match[3],
     };
   }
 
   return {
     participantName: null,
+    participantPhone: null,
     cleanText: rawText,
   };
 }

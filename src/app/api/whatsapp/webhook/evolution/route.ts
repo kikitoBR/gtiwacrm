@@ -315,7 +315,7 @@ export async function POST(request: Request) {
         }
 
         if (pName && contentText) {
-          contentText = `*${pName}:* ${contentText}`
+          contentText = pPhone ? `*${pName}|${pPhone}:* ${contentText}` : `*${pName}:* ${contentText}`
         }
       }
 

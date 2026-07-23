@@ -430,7 +430,11 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       try {
         data = await this.request('/chat/fetchProfilePictureUrl', { number }, 'POST')
       } catch {
-        data = await this.request('/chat/fetchProfilePictureUrl', { number }, 'GET')
+        try {
+          data = await this.request('/chat/fetchProfilePictureUrl', { number: `${number}@s.whatsapp.net` }, 'POST')
+        } catch {
+          data = await this.request('/chat/fetchProfilePictureUrl', { number }, 'GET')
+        }
       }
       return (
         (data?.profilePictureUrl as string) ||

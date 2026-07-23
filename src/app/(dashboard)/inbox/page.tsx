@@ -562,25 +562,30 @@ function InboxPageInner() {
         return;
       }
 
-      const cleanName = participant.trim();
-      if (!cleanName) return;
+      const cleanVal = participant.trim();
+      if (!cleanVal) return;
 
+      const digits = cleanVal.replace(/\D/g, "");
       const supabase = createClient();
-      const { data } = await supabase
-        .from("contacts")
-        .select("*")
-        .or(`name.ilike.%${cleanName}%,phone.ilike.%${cleanName}%`)
-        .maybeSingle();
+
+      let query = supabase.from("contacts").select("*");
+      if (digits.length >= 8) {
+        query = query.or(`phone.eq.${digits},phone_normalized.eq.${digits}`);
+      } else {
+        query = query.or(`name.ilike.%${cleanVal}%,phone.ilike.%${cleanVal}%`);
+      }
+
+      const { data } = await query.maybeSingle();
 
       if (data) {
         setActiveContact(data as Contact);
       } else if (activeConversation?.contact) {
         setActiveContact({
-          id: `transient-${cleanName}`,
+          id: `transient-${cleanVal}`,
           user_id: activeConversation.user_id,
           account_id: activeConversation.contact.account_id || "",
-          phone: cleanName,
-          name: cleanName,
+          phone: digits || cleanVal,
+          name: cleanVal,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
@@ -647,7 +652,7 @@ function InboxPageInner() {
         >
           <MessageThread
             conversation={activeConversation}
-            contact={activeContact}
+            contact={activeConversation?.contact ?? null}
             messages={messages}
             onMessagesLoaded={handleMessagesLoaded}
             onNewMessage={handleNewMessage}

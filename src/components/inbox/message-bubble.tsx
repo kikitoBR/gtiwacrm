@@ -279,9 +279,10 @@ export function MessageBubble({
 
   const parsed = isGroup && !isAgent
     ? parseGroupMessage(message.content_text)
-    : { participantName: null, cleanText: message.content_text || "" };
+    : { participantName: null, participantPhone: null, cleanText: message.content_text || "" };
 
   const participantName = parsed.participantName;
+  const participantPhone = parsed.participantPhone;
   const displayMessage: Message = {
     ...message,
     content_text: parsed.cleanText,
@@ -294,9 +295,9 @@ export function MessageBubble({
   const avatarUrl = initialAvatarUrl || fetchedAvatarUrl;
 
   useEffect(() => {
-    if (!initialAvatarUrl && (participantContact?.phone || participantName)) {
-      const phoneToQuery = participantContact?.phone || participantName;
-      if (phoneToQuery && phoneToQuery.replace(/\D/g, "").length >= 8) {
+    const phoneToQuery = participantContact?.phone || participantPhone || participantName;
+    if (!initialAvatarUrl && phoneToQuery) {
+      if (phoneToQuery.replace(/\D/g, "").length >= 8) {
         let cancelled = false;
         fetch(`/api/whatsapp/contact-avatar?phone=${encodeURIComponent(phoneToQuery)}`)
           .then((res) => (res.ok ? res.json() : null))
@@ -309,7 +310,7 @@ export function MessageBubble({
         };
       }
     }
-  }, [initialAvatarUrl, participantContact?.phone, participantName]);
+  }, [initialAvatarUrl, participantContact?.phone, participantPhone, participantName]);
 
   const handleParticipantClick = () => {
     if (onSelectParticipant) {
