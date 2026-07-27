@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     // returned nothing for teammates who didn't author the row.
     const { data: profile } = await supabase
       .from('profiles')
-      .select('account_id, full_name, signature_enabled, signature_text')
+      .select('account_id, full_name')
       .eq('user_id', user.id)
       .maybeSingle()
     const accountId = profile?.account_id as string | undefined
@@ -173,8 +173,12 @@ export async function POST(request: Request) {
     // dashboard maps it to the internal `{ error }` shape.
     try {
       let finalContentText = content_text
-      if (profile?.signature_enabled && content_text && typeof content_text === 'string') {
-        const sigName = profile.signature_text?.trim() || profile.full_name?.trim()
+      const metaSigEnabled = user.user_metadata?.signature_enabled as boolean | undefined
+      const metaSigText = user.user_metadata?.signature_text as string | undefined
+      const sigEnabled = metaSigEnabled ?? (profile as { signature_enabled?: boolean } | null)?.signature_enabled ?? false
+
+      if (sigEnabled && content_text && typeof content_text === 'string') {
+        const sigName = metaSigText?.trim() || (profile as { signature_text?: string } | null)?.signature_text?.trim() || profile?.full_name?.trim()
         if (sigName) {
           const formattedSig = sigName.startsWith('*') && sigName.endsWith('*') ? sigName : `*${sigName}*`
           finalContentText = `${formattedSig}\n\n${content_text}`
