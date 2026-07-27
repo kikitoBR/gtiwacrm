@@ -22,16 +22,18 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "wacrm",
-    template: "%s — wacrm",
+    default: "GTI-ZAP",
+    template: "%s — GTI-ZAP",
   },
-  description: "Self-hostable CRM template for WhatsApp.",
+  description: "GTI-ZAP — Gestão de WhatsApp e Atendimento",
   robots: {
     index: false,
     follow: false,
   },
   icons: {
-    icon: [{ url: "/icon" }],
+    icon: [{ url: "/gti-logo-white.png", type: "image/png" }],
+    shortcut: ["/gti-logo-white.png"],
+    apple: ["/gti-logo-white.png"],
   },
   formatDetection: {
     email: false,

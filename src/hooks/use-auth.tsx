@@ -23,18 +23,16 @@ import {
 
 interface Profile {
   id: string;
+  user_id?: string;
   full_name: string | null;
   email: string;
   avatar_url: string | null;
   role: string | null;
-  /**
-   * Opted-in beta feature keys for this account. No current feature
-   * reads this — Flows was the last user and went to soft-GA in PR
-   * #134 — but the column survives for future beta gates.
-   */
   beta_features: string[];
   account_id: string | null;
   account_role: AccountRole | null;
+  signature_enabled?: boolean | null;
+  signature_text?: string | null;
 }
 
 interface AccountSummary {

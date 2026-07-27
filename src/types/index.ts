@@ -16,6 +16,8 @@ export interface Profile {
   full_name: string;
   email: string;
   avatar_url?: string;
+  signature_enabled?: boolean;
+  signature_text?: string;
   /**
    * Legacy free-form role column from migration 001. Never read
    * by the app since 017_account_sharing.sql introduced the typed

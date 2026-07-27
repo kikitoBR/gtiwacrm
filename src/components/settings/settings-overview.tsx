@@ -157,6 +157,13 @@ export function SettingsOverview({
     subtitle: ReactNode;
   }[] = [
     {
+      section: 'signature',
+      loading: false,
+      subtitle: profile?.signature_enabled
+        ? `Ativada: *${profile.signature_text || profile.full_name || 'Atendente'}*`
+        : 'Desativada',
+    },
+    {
       section: 'whatsapp',
       loading: whatsappLoading,
       subtitle: !whatsapp?.configured ? (

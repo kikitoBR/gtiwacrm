@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     // returned nothing for teammates who didn't author the row.
     const { data: profile } = await supabase
       .from('profiles')
-      .select('account_id')
+      .select('account_id, full_name, signature_enabled, signature_text')
       .eq('user_id', user.id)
       .maybeSingle()
     const accountId = profile?.account_id as string | undefined
@@ -172,10 +172,19 @@ export async function POST(request: Request) {
     // `SendMessageError` carries a machine code + HTTP status; the
     // dashboard maps it to the internal `{ error }` shape.
     try {
+      let finalContentText = content_text
+      if (profile?.signature_enabled && content_text && typeof content_text === 'string') {
+        const sigName = profile.signature_text?.trim() || profile.full_name?.trim()
+        if (sigName) {
+          const formattedSig = sigName.startsWith('*') && sigName.endsWith('*') ? sigName : `*${sigName}*`
+          finalContentText = `${formattedSig}\n\n${content_text}`
+        }
+      }
+
       const result = await sendMessageToConversation(supabase, accountId, {
         conversationId,
         messageType: message_type,
-        contentText: content_text,
+        contentText: finalContentText,
         mediaUrl: media_url,
         filename,
         templateName: template_name,
