@@ -4,13 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { useAuth } from '@/hooks/use-auth';
-import { formatCurrency } from '@/lib/currency';
 import { toast } from 'sonner';
-import type { Contact, Tag, ContactTag, ContactNote, CustomField, ContactCustomValue, Deal, MessageTemplate } from '@/types';
-import {
-  TemplatePicker,
-  type TemplateSendValues,
-} from '@/components/inbox/template-picker';
+import type { Contact, Tag, ContactNote, CustomField } from '@/types';
 import {
   Sheet,
   SheetContent,
@@ -24,8 +19,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Phone,
   Mail,
@@ -36,9 +29,6 @@ import {
   Plus,
   Trash2,
   Save,
-  X,
-  DollarSign,
-  LayoutTemplate,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -57,17 +47,11 @@ export function ContactDetailView({
 }: ContactDetailViewProps) {
   const t = useTranslations('Contacts.detailView');
   const supabase = createClient();
-  const { accountId, defaultCurrency } = useAuth();
+  const { accountId } = useAuth();
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
-
-  // Send template — lets the business initiate (or re-open) a conversation
-  // with this contact by sending an approved template. The send route
-  // find-or-creates the conversation, so no inbound message is required.
-  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
-  const [sendingTemplate, setSendingTemplate] = useState(false);
 
   // Details tab
   const [editName, setEditName] = useState('');
@@ -92,10 +76,6 @@ export function ContactDetailView({
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [savingCustom, setSavingCustom] = useState(false);
   const [loadingCustom, setLoadingCustom] = useState(false);
-
-  // Deals tab
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [loadingDeals, setLoadingDeals] = useState(false);
 
   const fetchContact = useCallback(async () => {
     if (!contactId) return;
@@ -168,27 +148,14 @@ export function ContactDetailView({
     setLoadingCustom(false);
   }, [contactId, supabase]);
 
-  const fetchDeals = useCallback(async () => {
-    if (!contactId) return;
-    setLoadingDeals(true);
-    const { data } = await supabase
-      .from('deals')
-      .select('*, stage:pipeline_stages(*)')
-      .eq('contact_id', contactId)
-      .order('created_at', { ascending: false });
-    setDeals((data ?? []) as Deal[]);
-    setLoadingDeals(false);
-  }, [contactId, supabase]);
-
   useEffect(() => {
     if (open && contactId) {
       fetchContact();
       fetchTags();
       fetchNotes();
       fetchCustomFields();
-      fetchDeals();
     }
-  }, [open, contactId, fetchContact, fetchTags, fetchNotes, fetchCustomFields, fetchDeals]);
+  }, [open, contactId, fetchContact, fetchTags, fetchNotes, fetchCustomFields]);
 
   async function copyPhone() {
     if (!contact) return;
@@ -324,48 +291,6 @@ export function ContactDetailView({
     setSavingCustom(false);
   }
 
-  async function handleSendTemplate(
-    template: MessageTemplate,
-    values: TemplateSendValues,
-  ) {
-    if (!contactId) return;
-    setSendingTemplate(true);
-    try {
-      const res = await fetch('/api/whatsapp/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          // No conversation_id — the route find-or-creates one for this
-          // contact, mirroring the inbox template-send payload otherwise.
-          contact_id: contactId,
-          message_type: 'template',
-          template_name: template.name,
-          template_language: template.language,
-          template_message_params: {
-            body: values.body,
-            headerText: values.headerText,
-            buttonParams: values.buttonParams,
-          },
-          template_params: values.body,
-        }),
-      });
-
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const reason = payload?.error || `HTTP ${res.status}`;
-        toast.error(t('toastTemplateFailed', { reason }));
-        return;
-      }
-
-      toast.success(t('toastTemplateSent', { name: template.name }));
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : 'network error';
-      toast.error(`Failed to send template: ${reason}`);
-    } finally {
-      setSendingTemplate(false);
-    }
-  }
-
   function getInitials(name?: string | null) {
     if (!name) return '?';
     return name
@@ -377,7 +302,6 @@ export function ContactDetailView({
   }
 
   return (
-    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
@@ -390,15 +314,15 @@ export function ContactDetailView({
         ) : (
           <div className="flex flex-col h-full">
             {/* Header */}
-            <SheetHeader className="p-4 border-b border-border/50">
+            <SheetHeader className="p-4 pr-10 border-b border-border/50">
               <div className="flex items-center gap-3">
-                <Avatar className="size-12 bg-muted border border-border">
+                <Avatar className="size-12 bg-muted border border-border shrink-0">
                   <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
                     {getInitials(contact.name)}
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex-1 min-w-0">
-                  <SheetTitle className="text-popover-foreground truncate">
+                <div className="flex-1 min-w-0 pr-4">
+                  <SheetTitle className="text-popover-foreground truncate text-base font-bold">
                     {contact.name || t('unnamed')}
                   </SheetTitle>
                   <SheetDescription className="text-muted-foreground text-xs mt-0.5">
@@ -432,21 +356,6 @@ export function ContactDetailView({
                   </div>
                 </div>
               </div>
-              <div className="mt-3">
-                <Button
-                  size="sm"
-                  onClick={() => setTemplatePickerOpen(true)}
-                  disabled={sendingTemplate}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90"
-                >
-                  {sendingTemplate ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <LayoutTemplate className="size-4" />
-                  )}
-                  {t('sendTemplateBtn')}
-                </Button>
-              </div>
             </SheetHeader>
 
             {/* Tabs */}
@@ -476,19 +385,13 @@ export function ContactDetailView({
                 >
                   {t('tabs.custom')}
                 </TabsTrigger>
-                <TabsTrigger
-                  value="deals"
-                  className="data-active:bg-muted data-active:text-primary text-muted-foreground"
-                >
-                  {t('tabs.deals')}
-                </TabsTrigger>
               </TabsList>
 
               {/* Details Tab */}
               <TabsContent value="details" className="flex-1 overflow-y-auto px-4 py-3">
                 <div className="space-y-3">
                   <div className="space-y-1.5">
-                    <Label className="text-muted-foreground text-xs">{t('company', { fallback: 'Name' })}</Label>
+                    <Label className="text-muted-foreground text-xs">{t('name', { fallback: 'Nome' })}</Label>
                     <Input
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
@@ -687,73 +590,10 @@ export function ContactDetailView({
                   </div>
                 )}
               </TabsContent>
-
-              {/* Deals Tab */}
-              <TabsContent value="deals" className="flex-1 overflow-y-auto px-4 py-3">
-                {loadingDeals ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="size-5 animate-spin text-primary" />
-                  </div>
-                ) : deals.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">{t('dealsTab.noDeals')}</p>
-                ) : (
-                  <div className="space-y-2">
-                    {deals.map((deal) => (
-                      <div
-                        key={deal.id}
-                        className="rounded-lg border border-border bg-muted/50 p-3"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-medium text-foreground">
-                            {deal.title}
-                          </p>
-                          {deal.stage && (
-                            <span
-                              className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
-                              style={{
-                                backgroundColor: `${deal.stage.color}20`,
-                                color: deal.stage.color,
-                              }}
-                            >
-                              {deal.stage.name}
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-1.5 flex items-center justify-between text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <DollarSign className="size-3" />
-                            {formatCurrency(
-                              deal.value ?? 0,
-                              deal.currency || defaultCurrency,
-                            )}
-                          </span>
-                          {deal.status && deal.status !== 'open' && (
-                            <span
-                              className={
-                                deal.status === 'won'
-                                  ? 'text-primary'
-                                  : 'text-red-400'
-                              }
-                            >
-                              {deal.status}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
             </Tabs>
           </div>
         )}
       </SheetContent>
     </Sheet>
-    <TemplatePicker
-      open={templatePickerOpen}
-      onOpenChange={setTemplatePickerOpen}
-      onSelect={handleSendTemplate}
-    />
-    </>
   );
 }

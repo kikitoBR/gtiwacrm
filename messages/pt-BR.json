@@ -483,40 +483,40 @@
   },
   "Pipelines": {
     "page": {
-      "selectPipeline": "Selecionar Funil",
-      "noPipelinesYet": "Nenhum funil ainda",
-      "managePipelines": "Gerenciar Funis",
-      "addPipeline": "Adicionar Funil",
-      "addDeal": "Adicionar Negócio",
-      "createToStartTracking": "Crie um funil para começar a acompanhar seus negócios",
-      "createPipeline": "Criar Funil",
-      "newPipeline": "Novo Funil",
-      "pipelineName": "Nome do Funil",
-      "pipelineNamePlaceholder": "ex: Vendas Corporativas",
-      "defaultStagesDesc": "As etapas padrão (Novo Lead → Ganho) serão criadas automaticamente.",
+      "selectPipeline": "Selecionar Projeto",
+      "noPipelinesYet": "Nenhum projeto ainda",
+      "managePipelines": "Gerenciar Projetos",
+      "addPipeline": "Adicionar Projeto",
+      "addDeal": "Nova Demanda",
+      "createToStartTracking": "Crie um projeto para começar a acompanhar suas demandas",
+      "createPipeline": "Criar Projeto",
+      "newPipeline": "Novo Projeto",
+      "pipelineName": "Nome do Projeto",
+      "pipelineNamePlaceholder": "ex: Projetos GTI",
+      "defaultStagesDesc": "As etapas padrão (A Fazer → Concluído) serão criadas automaticamente.",
       "cancel": "Cancelar",
       "creating": "Criando...",
-      "createPipelineBtn": "Criar Funil",
-      "toastFailedLoadPipelines": "Falha ao carregar os funis",
-      "toastFailedMoveDeal": "Falha ao mover o negócio",
-      "toastFailedCreatePipeline": "Falha ao criar o funil",
-      "toastPipelineCreated": "Funil criado com sucesso",
+      "createPipelineBtn": "Criar Projeto",
+      "toastFailedLoadPipelines": "Falha ao carregar os projetos",
+      "toastFailedMoveDeal": "Falha ao mover a demanda",
+      "toastFailedCreatePipeline": "Falha ao criar o projeto",
+      "toastPipelineCreated": "Projeto criado com sucesso",
       "toastNotLinkedToAccount": "Seu perfil não está vinculado a uma conta."
     },
     "board": {
-      "dropDealHere": "Solte o negócio aqui",
-      "addDeal": "Adicionar Negócio"
+      "dropDealHere": "Solte a demanda aqui",
+      "addDeal": "Nova Demanda"
     },
     "card": {
       "noContact": "Sem contato",
-      "won": "Ganho",
-      "lost": "Perdido"
+      "won": "Concluído",
+      "lost": "Cancelado"
     },
     "form": {
-      "editDeal": "Editar Negócio",
-      "newDeal": "Novo Negócio",
+      "editDeal": "Editar Demanda",
+      "newDeal": "Nova Demanda",
       "title": "Título",
-      "titlePlaceholder": "Título do negócio",
+      "titlePlaceholder": "Título da demanda",
       "contact": "Contato",
       "selectContact": "Selecione um contato",
       "linkToConversation": "Vincular à Conversa",
@@ -1208,6 +1208,18 @@
   "Settings": {
     "pageTitle": "Configurações",
     "pageDesc": "Tudo em um só lugar — sua conta e seu workspace. Escolha uma seção para gerenciar.",
+    "sections": {
+      "overview": "Visão Geral",
+      "profile": "Seu perfil",
+      "signature": "Assinatura",
+      "security": "Login & segurança",
+      "appearance": "Aparência",
+      "whatsapp": "WhatsApp",
+      "quick-replies": "Respostas rápidas",
+      "fields": "Campos & tags",
+      "members": "Membros do time",
+      "api": "Chaves de API"
+    },
     "overview": {
       "notSetup": "Ainda não configurado",
       "connected": "Conectado",

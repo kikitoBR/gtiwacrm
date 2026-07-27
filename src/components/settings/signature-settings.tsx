@@ -18,11 +18,17 @@ export function SignatureSettings() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (profile) {
-      setEnabled(profile.signature_enabled ?? false);
-      setSignatureText(profile.signature_text ?? profile.full_name ?? "");
-    }
-  }, [profile]);
+    const metaSigText = user?.user_metadata?.signature_text;
+    const metaSigEnabled = user?.user_metadata?.signature_enabled;
+    const localSigText = typeof window !== "undefined" && user?.id ? localStorage.getItem(`gtizap_sig_text_${user.id}`) : null;
+    const localSigEnabled = typeof window !== "undefined" && user?.id ? localStorage.getItem(`gtizap_sig_enabled_${user.id}`) : null;
+
+    const activeEnabled = metaSigEnabled ?? profile?.signature_enabled ?? (localSigEnabled !== null ? localSigEnabled === "true" : false);
+    const activeText = metaSigText ?? profile?.signature_text ?? localSigText ?? profile?.full_name ?? "";
+
+    setEnabled(Boolean(activeEnabled));
+    setSignatureText(String(activeText));
+  }, [user, profile]);
 
   const displaySig = signatureText.trim() || profile?.full_name || "Atendente";
   const formattedSig = displaySig.startsWith("*") && displaySig.endsWith("*")
@@ -33,16 +39,35 @@ export function SignatureSettings() {
     if (!user?.id) return;
     setSaving(true);
     try {
-      const { error } = await supabase
+      const text = signatureText.trim();
+
+      // 1. Update Supabase Auth user_metadata (always supported on Supabase Auth!)
+      const { error: authError } = await supabase.auth.updateUser({
+        data: {
+          signature_enabled: enabled,
+          signature_text: text,
+        },
+      });
+      if (authError) {
+        console.warn("Auth user_metadata update note:", authError.message);
+      }
+
+      // 2. Update profiles table
+      const { error: profileError } = await supabase
         .from("profiles")
         .update({
           signature_enabled: enabled,
-          signature_text: signatureText.trim(),
+          signature_text: text,
         })
         .eq("user_id", user.id);
+      if (profileError) {
+        console.warn("Profiles update note:", profileError.message);
+      }
 
-      if (error) {
-        console.warn("Profiles signature update note:", error.message);
+      // 3. Update localStorage fallback
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`gtizap_sig_enabled_${user.id}`, String(enabled));
+        localStorage.setItem(`gtizap_sig_text_${user.id}`, text);
       }
 
       await refreshProfile();

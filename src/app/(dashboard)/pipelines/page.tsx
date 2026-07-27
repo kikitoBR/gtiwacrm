@@ -320,6 +320,16 @@ export default function PipelinesPage() {
 
   return (
     <div className="space-y-6">
+      {/* Page Title */}
+      <div>
+        <h1 className="text-xl font-bold tracking-tight text-foreground">
+          Gestão de Projetos
+        </h1>
+        <p className="text-xs text-muted-foreground">
+          Acompanhe o andamento das demandas e projetos da equipe.
+        </p>
+      </div>
+
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
