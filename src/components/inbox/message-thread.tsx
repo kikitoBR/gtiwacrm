@@ -968,7 +968,9 @@ export function MessageThread({
             )}
             <div className="min-w-0">
               <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
-              <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {isGroup ? "Grupo de WhatsApp" : (contact.phone.startsWith("+") ? contact.phone : `+${contact.phone.replace(/\D/g, "")}`)}
+              </p>
             </div>
           </div>
           {/* Session timer badge — hidden when using Evolution API or on narrow screens */}
