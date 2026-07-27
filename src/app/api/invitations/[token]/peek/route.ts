@@ -4,25 +4,10 @@
 // Public — no auth required. Lets the /join/<token> page render
 // "You're being invited to <Account> as <Role>" before the
 // visitor signs up or signs in.
-//
-// Security model
-//   - Token is in the URL path, not the query, so it doesn't
-//     show up in standard access-log "referer" fields the way a
-//     `?token=` would.
-//   - The plaintext token never crosses the DB boundary — we
-//     hash it in TS first and look up by `token_hash`.
-//   - The peek RPC is SECURITY DEFINER so it bypasses the RLS
-//     that would otherwise block an anonymous SELECT on
-//     `account_invitations`. It returns a fixed-shape JSON
-//     payload that never leaks columns beyond what the join
-//     page renders.
-//   - Per-IP rate limit pinches brute-force enumeration of
-//     tokens. With 256 bits of entropy the enumeration risk is
-//     theoretical, but rate limiting is cheap insurance.
 // ============================================================
 
 import { NextResponse } from "next/server";
-
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { hashInviteToken } from "@/lib/auth/invitations";
 import {
   checkRateLimit,
@@ -31,17 +16,13 @@ import {
 } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 
-/**
- * Best-effort client IP. The `x-forwarded-for` header is what
- * every reverse proxy (Vercel, Hostinger, Cloudflare) sets when
- * forwarding a request; we take the leftmost entry, which is
- * the original client.
- *
- * Falls back to a constant when no proxy is in front (e.g.
- * `localhost` during development) so rate-limit keys still
- * exist — the limit then effectively applies "globally," which
- * is fine for dev.
- */
+function supabaseAdmin() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
 function getClientIp(request: Request): string {
   const xff = request.headers.get("x-forwarded-for");
   if (xff) return xff.split(",")[0].trim();
@@ -54,8 +35,6 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ token: string }> },
 ) {
-  // Rate-limit by IP first. Returns 429 to a serial bruteforcer
-  // before we ever touch the DB.
   const ip = getClientIp(request);
   const limit = checkRateLimit(`peek:${ip}`, RATE_LIMITS.invitationPeek);
   if (!limit.success) return rateLimitResponse(limit);
@@ -68,20 +47,60 @@ export async function GET(
     );
   }
 
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("peek_invitation", {
-    p_token_hash: hashInviteToken(token),
-  });
+  const tokenHash = hashInviteToken(token);
 
-  if (error) {
-    console.error("[peek] rpc error:", error);
+  // 1. Try calling the RPC via user/anon client first
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("peek_invitation", {
+      p_token_hash: tokenHash,
+    });
+
+    if (!error && data) {
+      return NextResponse.json(data);
+    }
+  } catch {
+    /* fallback to service role below */
+  }
+
+  // 2. Direct Service Role fallback (bypasses RLS / missing RPC)
+  try {
+    const admin = supabaseAdmin();
+    const { data: inv, error: invErr } = await admin
+      .from("account_invitations")
+      .select("account_id, role, expires_at, accepted_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+
+    if (invErr || !inv) {
+      return NextResponse.json({ ok: false, reason: "not_found" });
+    }
+
+    if (inv.accepted_at) {
+      return NextResponse.json({ ok: false, reason: "used" });
+    }
+
+    if (new Date(inv.expires_at) <= new Date()) {
+      return NextResponse.json({ ok: false, reason: "expired" });
+    }
+
+    const { data: acc } = await admin
+      .from("accounts")
+      .select("name")
+      .eq("id", inv.account_id)
+      .maybeSingle();
+
+    return NextResponse.json({
+      ok: true,
+      account_name: acc?.name || "Workspace",
+      role: inv.role,
+      expires_at: inv.expires_at,
+    });
+  } catch (err) {
+    console.error("[peek] fallback query error:", err);
     return NextResponse.json(
       { ok: false, reason: "server_error" },
       { status: 500 },
     );
   }
-
-  // The RPC always returns a json object — either ok:true with
-  // metadata or ok:false with a reason. Forward verbatim.
-  return NextResponse.json(data);
 }

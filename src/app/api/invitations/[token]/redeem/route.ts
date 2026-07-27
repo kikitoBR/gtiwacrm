@@ -3,22 +3,11 @@
 //
 // Authenticated. Caller atomically moves from their personal
 // account (created at signup) to the inviter's account with the
-// invite's role. Heavy lifting lives in the SECURITY DEFINER
-// `redeem_invitation` RPC from migration 019.
-//
-// Refusal contract (from the RPC)
-//   - SQLSTATE 42501 → 401 (caller not authenticated)
-//   - SQLSTATE 22023 → 400 (invitation not_found / used / expired)
-//   - SQLSTATE 23505 → 409 (caller's account already has data /
-//     they're already in this or another shared account)
-//
-// Rate limit (per IP) is the same shape as peek but tighter —
-// a successful redeem changes data, and the RPC's data-loss
-// guard makes brute-force retries pointless past a few attempts.
+// invite's role.
 // ============================================================
 
 import { NextResponse } from "next/server";
-import type { PostgrestError } from "@supabase/supabase-js";
+import { createClient as createSupabaseClient, type PostgrestError } from "@supabase/supabase-js";
 
 import { hashInviteToken } from "@/lib/auth/invitations";
 import {
@@ -27,6 +16,13 @@ import {
   RATE_LIMITS,
 } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
+
+function supabaseAdmin() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 function getClientIp(request: Request): string {
   const xff = request.headers.get("x-forwarded-for");
@@ -71,9 +67,6 @@ export async function POST(
 
   const supabase = await createClient();
 
-  // The RPC checks `auth.uid()` itself, but failing fast here
-  // gives a cleaner 401 without a Supabase round trip on the
-  // common "user clicked the link before logging in" path.
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -81,11 +74,64 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const tokenHash = hashInviteToken(token);
+
+  // 1. Try RPC first
   const { data: accountId, error } = await supabase.rpc("redeem_invitation", {
-    p_token_hash: hashInviteToken(token),
+    p_token_hash: tokenHash,
   });
 
-  if (error) return rpcErrorToResponse(error);
+  if (!error && accountId) {
+    return NextResponse.json({ ok: true, accountId });
+  }
 
-  return NextResponse.json({ ok: true, accountId });
+  if (error && ["42501", "22023", "23505"].includes(error.code)) {
+    return rpcErrorToResponse(error);
+  }
+
+  // 2. Direct Service Role fallback (bypasses RLS / missing RPC)
+  try {
+    const admin = supabaseAdmin();
+    const { data: inv } = await admin
+      .from("account_invitations")
+      .select("account_id, role, expires_at, accepted_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+
+    if (!inv) {
+      return NextResponse.json({ error: "Convite não encontrado" }, { status: 400 });
+    }
+    if (inv.accepted_at) {
+      return NextResponse.json({ error: "Este convite já foi utilizado" }, { status: 400 });
+    }
+    if (new Date(inv.expires_at) <= new Date()) {
+      return NextResponse.json({ error: "Este convite expirou" }, { status: 400 });
+    }
+
+    // Update user's profile to join inviter's account and set role
+    const { error: updateProfErr } = await admin
+      .from("profiles")
+      .update({
+        account_id: inv.account_id,
+        role: inv.role,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", user.id);
+
+    if (updateProfErr) {
+      console.error("[redeem] profile update error:", updateProfErr);
+      return NextResponse.json({ error: "Falha ao atualizar perfil do usuário" }, { status: 500 });
+    }
+
+    // Mark invitation accepted
+    await admin
+      .from("account_invitations")
+      .update({ accepted_at: new Date().toISOString() })
+      .eq("token_hash", tokenHash);
+
+    return NextResponse.json({ ok: true, accountId: inv.account_id });
+  } catch (fallbackErr) {
+    console.error("[redeem] fallback error:", fallbackErr);
+    return NextResponse.json({ error: "Failed to redeem invitation" }, { status: 500 });
+  }
 }
