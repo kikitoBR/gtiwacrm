@@ -15,7 +15,7 @@
 // ============================================================
 
 import { NextResponse } from "next/server";
-import type { PostgrestError } from "@supabase/supabase-js";
+import { createClient as createSupabaseClient, type PostgrestError } from "@supabase/supabase-js";
 
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
 import { isAccountRole } from "@/lib/auth/roles";
@@ -86,7 +86,27 @@ export async function PATCH(
       p_new_role: role,
     });
 
-    if (error) return rpcErrorToResponse(error);
+    if (error) {
+      try {
+        const admin = createSupabaseClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+        const { error: updateErr } = await admin
+          .from("profiles")
+          .update({
+            account_role: role,
+            role,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", userId)
+          .eq("account_id", ctx.accountId);
+
+        if (updateErr) return rpcErrorToResponse(error);
+      } catch {
+        return rpcErrorToResponse(error);
+      }
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

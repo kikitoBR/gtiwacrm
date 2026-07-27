@@ -108,11 +108,12 @@ export async function POST(
       return NextResponse.json({ error: "Este convite expirou" }, { status: 400 });
     }
 
-    // Update user's profile to join inviter's account and set role
+    // Update user's profile to join inviter's account and set account_role
     const { error: updateProfErr } = await admin
       .from("profiles")
       .update({
         account_id: inv.account_id,
+        account_role: inv.role,
         role: inv.role,
         updated_at: new Date().toISOString(),
       })
