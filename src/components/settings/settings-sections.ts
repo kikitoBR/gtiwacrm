@@ -1,6 +1,4 @@
 import {
-  Coins,
-  FileText,
   KeyRound,
   LayoutGrid,
   Palette,
@@ -27,10 +25,8 @@ export const SETTINGS_SECTIONS = [
   'security',
   'appearance',
   'whatsapp',
-  'templates',
   'quick-replies',
   'fields',
-  'deals',
   'members',
   'api',
 ] as const;
@@ -54,10 +50,8 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   security: { id: 'security', label: 'Login & security', icon: Shield, group: 'account' },
   appearance: { id: 'appearance', label: 'Appearance', icon: Palette, group: 'account' },
   whatsapp: { id: 'whatsapp', label: 'WhatsApp', icon: PlugZap, group: 'workspace', adminOnly: true },
-  templates: { id: 'templates', label: 'Templates', icon: FileText, group: 'workspace' },
   'quick-replies': { id: 'quick-replies', label: 'Quick replies', icon: Zap, group: 'workspace' },
   fields: { id: 'fields', label: 'Fields & tags', icon: Tags, group: 'workspace', adminOnly: true },
-  deals: { id: 'deals', label: 'Deals & currency', icon: Coins, group: 'workspace', adminOnly: true },
   members: { id: 'members', label: 'Team members', icon: UsersRound, group: 'workspace', adminOnly: true },
   api: { id: 'api', label: 'API keys', icon: KeyRound, group: 'workspace', adminOnly: true },
 };

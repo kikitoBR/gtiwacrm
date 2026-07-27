@@ -18,8 +18,6 @@ import type { Deal, PipelineStage } from "@/types";
 import { DealCard } from "./deal-card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth";
-import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
 
 interface PipelineBoardProps {
@@ -32,12 +30,23 @@ interface PipelineBoardProps {
 
 export function formatStageName(name: string): string {
   switch (name) {
-    case "New Lead": return "Novo Lead";
-    case "Qualified": return "Qualificado";
-    case "Proposal Sent": return "Proposta Enviada";
-    case "Negotiation": return "Negociação";
-    case "Won": return "Ganho";
-    default: return name;
+    case "New Lead":
+    case "Novo Lead":
+      return "A Fazer / Backlog";
+    case "Qualified":
+    case "Qualificado":
+      return "Em Andamento";
+    case "Proposal Sent":
+    case "Proposta Enviada":
+      return "Em Revisão";
+    case "Negotiation":
+    case "Negociação":
+      return "Bloqueado";
+    case "Won":
+    case "Ganho":
+      return "Concluído";
+    default:
+      return name;
   }
 }
 
@@ -48,7 +57,6 @@ export function PipelineBoard({
   onAddDeal,
   onEditDeal,
 }: PipelineBoardProps) {
-  const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
 
   const sortedStages = useMemo(
@@ -117,17 +125,11 @@ export function PipelineBoard({
       <div className="pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:snap-none">
         {sortedStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
-          const totalValue = stageDeals.reduce(
-            (s, d) => s + Number(d.value || 0),
-            0,
-          );
           return (
             <StageColumn
               key={stage.id}
               stage={stage}
               deals={stageDeals}
-              totalValue={totalValue}
-              currency={defaultCurrency}
               onAddDeal={onAddDeal}
               onEditDeal={onEditDeal}
             />
@@ -200,15 +202,11 @@ export function PipelineBoard({
 function StageColumn({
   stage,
   deals,
-  totalValue,
-  currency,
   onAddDeal,
   onEditDeal,
 }: {
   stage: PipelineStage;
   deals: Deal[];
-  totalValue: number;
-  currency: string;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
 }) {
@@ -236,9 +234,6 @@ function StageColumn({
           {deals.length}
         </span>
       </div>
-      <p className="text-xs text-muted-foreground">
-        {formatCurrency(totalValue, currency)}
-      </p>
 
       <div
         ref={setNodeRef}
