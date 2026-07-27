@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import {
   registerPhoneNumber,
   subscribeWabaToApp,
@@ -34,32 +35,13 @@ function supabaseAdmin() {
 
 /**
  * GET /api/whatsapp/config
- * Supports both 'meta' and 'evolution' providers.
+ * Supports both 'meta' and 'evolution' providers. Admin-only.
  */
 export async function GET() {
   try {
-    const supabase = await createClient()
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const accountId = await resolveAccountId(supabase, user.id)
-    if (!accountId) {
-      return NextResponse.json(
-        {
-          connected: false,
-          reason: 'no_account',
-          message: 'Your profile is not linked to an account.',
-        },
-        { status: 200 },
-      )
-    }
+    const ctx = await requireRole('admin')
+    const supabase = ctx.supabase
+    const accountId = ctx.accountId
 
     const { data: config, error: configError } = await supabase
       .from('whatsapp_config')
@@ -205,24 +187,9 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const accountId = await resolveAccountId(supabase, user.id)
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
-        { status: 403 },
-      )
-    }
+    const ctx = await requireRole('admin')
+    const supabase = ctx.supabase
+    const accountId = ctx.accountId
 
     const body = await request.json()
     const {
@@ -332,7 +299,7 @@ export async function POST(request: Request) {
           .from('whatsapp_config')
           .insert({
             account_id: accountId,
-            user_id: user.id,
+            user_id: ctx.userId,
             ...baseRow,
           })
 
@@ -493,7 +460,7 @@ export async function POST(request: Request) {
         .from('whatsapp_config')
         .insert({
           account_id: accountId,
-          user_id: user.id,
+          user_id: ctx.userId,
           ...baseRow,
         })
 
@@ -528,24 +495,9 @@ export async function POST(request: Request) {
 
 export async function DELETE() {
   try {
-    const supabase = await createClient()
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const accountId = await resolveAccountId(supabase, user.id)
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
-        { status: 403 },
-      )
-    }
+    const ctx = await requireRole('admin')
+    const supabase = ctx.supabase
+    const accountId = ctx.accountId
 
     const { error: deleteError } = await supabase
       .from('whatsapp_config')
@@ -559,7 +511,6 @@ export async function DELETE() {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error in WhatsApp config DELETE:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return toErrorResponse(error)
   }
 }

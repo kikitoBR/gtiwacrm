@@ -44,9 +44,7 @@ const SAFE_COLUMNS =
 
 export async function GET() {
   try {
-    // Any member can view the roster (RLS allows it); we just need a
-    // resolved account context.
-    const ctx = await getCurrentAccount();
+    const ctx = await requireRole('admin');
 
     const { data, error } = await ctx.supabase
       .from('api_keys')
