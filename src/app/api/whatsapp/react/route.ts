@@ -61,7 +61,7 @@ export async function POST(request: Request) {
 
     const admin = supabaseAdmin();
 
-    // Query message by id or whatsapp_message_id
+    // Query message by internal UUID or whatsapp_message_id
     let { data: targetMessage } = await admin
       .from('messages')
       .select('id, whatsapp_message_id, sender_type, conversation_id')
@@ -91,25 +91,30 @@ export async function POST(request: Request) {
       );
     }
 
-    // Query conversation and contacts without alias to prevent PostgREST errors
-    const { data: conversation, error: convError } = await admin
+    // Query conversation directly without join to avoid PostgREST relationship errors
+    const { data: conversation } = await admin
       .from('conversations')
-      .select('id, account_id, contact_id, contacts(phone)')
+      .select('id, account_id, contact_id')
       .eq('id', targetMessage.conversation_id)
       .maybeSingle();
 
-    if (convError || !conversation) {
+    if (!conversation) {
       return NextResponse.json(
         { error: 'Conversation not found' },
         { status: 404 },
       );
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const contactObj = Array.isArray(conversation.contacts)
-      ? conversation.contacts[0]
-      : (conversation as any).contacts;
-    const phone = contactObj?.phone;
+    // Query contact directly
+    let phone: string | undefined;
+    if (conversation.contact_id) {
+      const { data: contact } = await admin
+        .from('contacts')
+        .select('phone')
+        .eq('id', conversation.contact_id)
+        .maybeSingle();
+      phone = contact?.phone;
+    }
 
     if (!phone) {
       return NextResponse.json(
@@ -118,13 +123,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: config, error: configError } = await admin
+    const { data: config } = await admin
       .from('whatsapp_config')
       .select('*')
       .eq('account_id', conversation.account_id || accountId)
       .maybeSingle();
 
-    if (configError || !config) {
+    if (!config) {
       return NextResponse.json(
         { error: 'WhatsApp not configured.' },
         { status: 400 },
