@@ -61,28 +61,44 @@ export async function POST(request: Request) {
 
     const admin = supabaseAdmin();
 
-    // Query message by internal UUID or whatsapp_message_id
-    let { data: targetMessage } = await admin
-      .from('messages')
-      .select('id, whatsapp_message_id, sender_type, conversation_id')
-      .eq('id', message_id)
-      .maybeSingle();
+    // Check if message_id is a UUID format to prevent PostgreSQL 22P02 errors
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(message_id);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let targetMessage: any = null;
+
+    if (isUuid) {
+      const { data } = await admin
+        .from('messages')
+        .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
+        .eq('id', message_id)
+        .maybeSingle();
+      targetMessage = data;
+    }
 
     if (!targetMessage) {
-      const { data: altMsg } = await admin
+      const { data } = await admin
         .from('messages')
-        .select('id, whatsapp_message_id, sender_type, conversation_id')
+        .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
         .eq('whatsapp_message_id', message_id)
         .maybeSingle();
-      targetMessage = altMsg;
+      targetMessage = data;
+    }
+
+    if (!targetMessage) {
+      const { data } = await admin
+        .from('messages')
+        .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
+        .eq('message_id', message_id)
+        .maybeSingle();
+      targetMessage = data;
     }
 
     if (!targetMessage) {
       return NextResponse.json({ error: 'Message not found' }, { status: 404 });
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const waMsgId = targetMessage.whatsapp_message_id || (targetMessage as any).message_id || targetMessage.id;
+    const waMsgId = targetMessage.whatsapp_message_id || targetMessage.message_id || targetMessage.id;
 
     if (!waMsgId) {
       return NextResponse.json(
@@ -91,7 +107,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Query conversation directly without join to avoid PostgREST relationship errors
+    // Query conversation directly without join
     const { data: conversation } = await admin
       .from('conversations')
       .select('id, account_id, contact_id')
