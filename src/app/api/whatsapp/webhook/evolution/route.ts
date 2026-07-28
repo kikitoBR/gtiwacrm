@@ -27,6 +27,96 @@ function supabaseAdmin() {
   return _adminClient
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function processEditedMessage(
+  key: any,
+  dataOrUpdate: any,
+  msgObj: any,
+  itemObj: any,
+  config: { account_id: string; [key: string]: unknown }
+): Promise<boolean> {
+  const candidates = [
+    msgObj?.protocolMessage,
+    msgObj?.editedMessage,
+    msgObj?.message?.protocolMessage,
+    msgObj?.message?.editedMessage,
+    dataOrUpdate?.message?.protocolMessage,
+    dataOrUpdate?.message?.editedMessage,
+    dataOrUpdate?.protocolMessage,
+    dataOrUpdate?.editedMessage,
+    itemObj?.message?.protocolMessage,
+    itemObj?.message?.editedMessage,
+    itemObj?.protocolMessage,
+    itemObj?.editedMessage,
+  ].filter(Boolean)
+
+  if (candidates.length === 0) return false
+
+  let targetId: string | null = null
+  let newText: string | null = null
+
+  for (const c of candidates) {
+    const keyId = c.key?.id || c.editedMessage?.key?.id
+    if (keyId) targetId = keyId
+
+    const textPayload =
+      c.editedMessage?.message ||
+      c.editedMessage ||
+      c.message?.message ||
+      c.message
+
+    const extractedText =
+      textPayload?.conversation ||
+      textPayload?.extendedTextMessage?.text ||
+      textPayload?.text ||
+      (typeof textPayload === 'string' ? textPayload : null)
+
+    if (extractedText) newText = extractedText
+  }
+
+  const editTargetId = targetId || key?.id || dataOrUpdate?.key?.id || itemObj?.key?.id
+  if (!editTargetId || !newText) return false
+
+  const { data: existingMsg } = await supabaseAdmin()
+    .from('messages')
+    .select('id, content_text, conversation_id')
+    .or(`message_id.eq.${editTargetId},id.eq.${editTargetId}`)
+    .maybeSingle()
+
+  if (existingMsg) {
+    let finalEditedText = newText
+    if (existingMsg.content_text) {
+      const { participantName, participantPhone } = parseGroupMessage(existingMsg.content_text)
+      if (participantName) {
+        const prefix = participantPhone ? `*${participantName}|${participantPhone}:*` : `*${participantName}:*`
+        finalEditedText = `${prefix} ${newText}`
+      }
+    }
+
+    await supabaseAdmin()
+      .from('messages')
+      .update({
+        content_text: finalEditedText,
+        is_edited: true,
+        status: 'edited',
+      })
+      .eq('id', existingMsg.id)
+
+    if (existingMsg.conversation_id) {
+      await supabaseAdmin()
+        .from('conversations')
+        .update({
+          last_message_text: finalEditedText,
+        })
+        .eq('id', existingMsg.conversation_id)
+    }
+
+    return true
+  }
+
+  return false
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -203,110 +293,8 @@ export async function POST(request: Request) {
       }
 
       // Check for EDITED message protocol event in messages.upsert
-      const candidates = [
-        msg?.protocolMessage,
-        msg?.editedMessage,
-        msg?.message?.protocolMessage,
-        msg?.message?.editedMessage,
-        item?.message?.protocolMessage,
-        item?.message?.editedMessage,
-        item?.protocolMessage,
-        item?.editedMessage,
-      ].filter(Boolean)
-
-      const isEditEvent = candidates.some(
-        (c: any) =>
-          c.type === 14 ||
-          c.type === 'EDITED_MESSAGE' ||
-          c.editedMessage ||
-          c.message
-      )
-
-      if (isEditEvent) {
-        let targetId: string | null = null
-        let newText: string | null = null
-
-        for (const c of candidates) {
-          const keyId = c.key?.id || c.editedMessage?.key?.id
-          if (keyId) targetId = keyId
-
-          const textPayload =
-            c.editedMessage?.message ||
-            c.editedMessage ||
-            c.message?.message ||
-            c.message
-
-          const extractedText =
-            textPayload?.conversation ||
-            textPayload?.extendedTextMessage?.text ||
-            textPayload?.text ||
-            (typeof textPayload === 'string' ? textPayload : null)
-
-          if (extractedText) newText = extractedText
-        }
-
-        const editTargetId = targetId || key.id
-
-        if (editTargetId) {
-          const { data: existingMsg } = await supabaseAdmin()
-            .from('messages')
-            .select('id, content_text')
-            .or(`message_id.eq.${editTargetId},id.eq.${editTargetId}`)
-            .maybeSingle()
-
-          if (existingMsg) {
-            let finalEditedText = newText || existingMsg.content_text || ''
-            if (isGroup && !fromMe && existingMsg.content_text) {
-              const { participantName, participantPhone } = parseGroupMessage(existingMsg.content_text)
-              if (participantName && newText) {
-                const prefix = participantPhone ? `*${participantName}|${participantPhone}:*` : `*${participantName}:*`
-                finalEditedText = `${prefix} ${newText}`
-              }
-            }
-
-            if (newText) {
-              await supabaseAdmin()
-                .from('messages')
-                .update({
-                  content_text: finalEditedText,
-                  is_edited: true,
-                  status: 'edited',
-                })
-                .eq('id', existingMsg.id)
-            }
-          } else {
-            // Target message not found by exact ID, attempt updating latest message in conversation
-            const { data: latestMsg } = await supabaseAdmin()
-              .from('messages')
-              .select('id, content_text')
-              .eq('conversation_id', conversation.id)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle()
-
-            if (latestMsg && newText) {
-              let finalEditedText = newText
-              if (isGroup && !fromMe && latestMsg.content_text) {
-                const { participantName, participantPhone } = parseGroupMessage(latestMsg.content_text)
-                if (participantName) {
-                  const prefix = participantPhone ? `*${participantName}|${participantPhone}:*` : `*${participantName}:*`
-                  finalEditedText = `${prefix} ${newText}`
-                }
-              }
-
-              await supabaseAdmin()
-                .from('messages')
-                .update({
-                  content_text: finalEditedText,
-                  is_edited: true,
-                  status: 'edited',
-                })
-                .eq('id', latestMsg.id)
-            }
-          }
-        }
-
-        // CRITICAL: Always return success for edit events so we NEVER fall through to insert a blank message!
+      const editHandledInUpsert = await processEditedMessage(key, data, msg, item, config)
+      if (editHandledInUpsert) {
         return NextResponse.json({ status: 'success', edited: true }, { status: 200 })
       }
 
@@ -639,11 +627,18 @@ export async function POST(request: Request) {
     }
 
     // ==========================================
-    // 2) EVENTO: messages.update (Status)
+    // 2) EVENTO: messages.update (Status / Edição)
     // ==========================================
-    if (event === 'messages.update') {
+    if (event === 'messages.update' || event === 'MESSAGES_UPDATE') {
       const updateData = data.update || (Array.isArray(data) ? data[0]?.update : data)
       const key = data.key || (Array.isArray(data) ? data[0]?.key : null)
+      const itemMsg = data.message || (Array.isArray(data) ? data[0]?.message : null)
+
+      // Check for edited message in messages.update
+      const editHandledInUpdate = await processEditedMessage(key, updateData, itemMsg, data, config)
+      if (editHandledInUpdate) {
+        return NextResponse.json({ status: 'success', edited: true }, { status: 200 })
+      }
 
       if (key && key.id && updateData && typeof updateData.status !== 'undefined') {
         const statusMap: Record<number, string> = {
