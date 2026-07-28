@@ -703,6 +703,32 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
   }
 
   async syncContacts(): Promise<Array<{ id: string; name?: string; pushName?: string; pictureUrl?: string }>> {
+    const contactsMap = new Map<string, { id: string; name?: string; pushName?: string; pictureUrl?: string }>()
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const addContact = (item: any) => {
+      if (!item) return
+      const rawId = typeof item === 'string' ? item : item?.id || item?.jid || item?.number || item?.remoteJid || ''
+      if (!rawId || rawId.includes('@g.us')) return
+      const cleanPhone = this.cleanJidToDigits(rawId)
+      if (cleanPhone.length >= 8 && cleanPhone.length <= 13) {
+        const name = typeof item === 'object' ? (item?.name || item?.pushName || item?.formattedName || item?.verifiedName) : undefined
+        const pushName = typeof item === 'object' ? item?.pushName : undefined
+        const pictureUrl = typeof item === 'object' ? (item?.profilePicUrl || item?.pictureUrl || item?.profilePictureUrl) : undefined
+
+        if (!contactsMap.has(cleanPhone)) {
+          contactsMap.set(cleanPhone, { id: cleanPhone, name, pushName, pictureUrl })
+        } else {
+          const existing = contactsMap.get(cleanPhone)!
+          if (!existing.name || existing.name.startsWith('+')) {
+            existing.name = name || existing.name
+          }
+          existing.pictureUrl = pictureUrl || existing.pictureUrl
+        }
+      }
+    }
+
+    // 1. Fetch contacts from /chat/findContacts
     try {
       let data: unknown = null
       try {
@@ -714,19 +740,43 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
           data = await this.request('/chat/findContacts', { where: {} }, 'POST')
         }
       }
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const list = (Array.isArray(data) ? data : (data as any)?.data || (data as any)?.contacts || []) as any[]
-      return list.map((item) => {
-        const rawId = typeof item === 'string' ? item : item?.id || item?.jid || item?.number || ''
-        const name = typeof item === 'object' ? (item?.name || item?.pushName || item?.formattedName) : undefined
-        const pictureUrl = typeof item === 'object' ? (item?.profilePicUrl || item?.pictureUrl || item?.profilePictureUrl) : undefined
-        return { id: rawId, name, pushName: typeof item === 'object' ? item?.pushName : undefined, pictureUrl }
-      })
+      for (const item of list) addContact(item)
     } catch (err) {
-      console.warn('[Evolution API] syncContacts failed:', err)
-      return []
+      console.warn('[Evolution API] findContacts failed:', err)
     }
+
+    // 2. Fetch active and archived chats from /chat/fetchChats
+    try {
+      let chatsData: unknown = null
+      try {
+        chatsData = await this.request('/chat/fetchChats', {}, 'GET')
+      } catch {
+        chatsData = await this.request('/chat/fetchChats', {}, 'POST')
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const chatsList = (Array.isArray(chatsData) ? chatsData : (chatsData as any)?.data || (chatsData as any)?.chats || []) as any[]
+      for (const chat of chatsList) addContact(chat)
+    } catch (err) {
+      console.warn('[Evolution API] fetchChats failed during sync:', err)
+    }
+
+    // 3. Fetch all group members from /group/fetchAllGroups
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const groups = (await this.request('/group/fetchAllGroups', { getParticipants: true }, 'GET')) as unknown as any[]
+      if (Array.isArray(groups)) {
+        for (const g of groups) {
+          const participants = this.extractParticipantsFromApiData(g)
+          for (const p of participants) addContact(p)
+        }
+      }
+    } catch {
+      /* ignore group fetch errors */
+    }
+
+    return Array.from(contactsMap.values())
   }
 
   private formatPhone(phone: string): string {
