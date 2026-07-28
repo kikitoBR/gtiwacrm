@@ -72,13 +72,26 @@ export async function POST(request: Request) {
 
     // Resolve target message + its conversation using admin client to bypass RLS.
     const admin = supabaseAdmin();
-    const { data: targetMessage, error: msgError } = await admin
+    let { data: targetMessage, error: msgError } = await admin
       .from('messages')
       .select('id, whatsapp_message_id, sender_type, conversation_id')
       .eq('id', message_id)
       .maybeSingle();
 
-    if (msgError || !targetMessage) {
+    if (!targetMessage) {
+      const { data: altMsg } = await admin
+        .from('messages')
+        .select('id, whatsapp_message_id, sender_type, conversation_id')
+        .eq('whatsapp_message_id', message_id)
+        .maybeSingle();
+      targetMessage = altMsg;
+    }
+
+    if (msgError && !targetMessage) {
+      return NextResponse.json({ error: 'Message not found' }, { status: 404 });
+    }
+
+    if (!targetMessage) {
       return NextResponse.json({ error: 'Message not found' }, { status: 404 });
     }
 

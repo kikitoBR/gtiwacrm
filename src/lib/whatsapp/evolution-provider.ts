@@ -293,14 +293,20 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     fromMe?: boolean
   }): Promise<{ success: boolean }> {
     const toPhone = this.formatPhone(args.to)
-    const remoteJid = toPhone.includes('@') ? toPhone : `${toPhone.replace(/\D/g, '')}@s.whatsapp.net`
+    const cleanPhone = toPhone.replace(/\D/g, '')
+    const remoteJid = toPhone.includes('@') ? toPhone : `${cleanPhone}@s.whatsapp.net`
+    const key = {
+      remoteJid,
+      fromMe: args.fromMe ?? true,
+      id: args.messageId,
+    }
     const payload = {
+      number: cleanPhone,
+      id: args.messageId,
+      remoteJid,
+      fromMe: args.fromMe ?? true,
       status: 'REVOKE',
-      key: {
-        remoteJid,
-        fromMe: args.fromMe ?? true,
-        id: args.messageId,
-      },
+      key,
     }
 
     try {
@@ -308,15 +314,28 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       return { success: true }
     } catch {
       try {
-        await this.request('/chat/deleteMessageForEveryone', payload, 'POST')
+        await this.request('/message/delete', payload, 'DELETE')
         return { success: true }
       } catch {
         try {
-          await this.request('/message/delete', payload, 'DELETE')
+          await this.request('/chat/deleteMessageForEveryone', {
+            remoteJid,
+            id: args.messageId,
+            fromMe: args.fromMe ?? true,
+          }, 'POST')
           return { success: true }
-        } catch (err) {
-          console.warn('[Evolution API] deleteMessage failed:', err)
-          return { success: false }
+        } catch {
+          try {
+            await this.request('/message/deleteMessageForEveryone', {
+              remoteJid,
+              id: args.messageId,
+              fromMe: args.fromMe ?? true,
+            }, 'POST')
+            return { success: true }
+          } catch (err) {
+            console.warn('[Evolution API] deleteMessage failed:', err)
+            return { success: false }
+          }
         }
       }
     }
