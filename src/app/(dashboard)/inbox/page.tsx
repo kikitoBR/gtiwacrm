@@ -339,7 +339,11 @@ function InboxPageInner() {
                 </div>
               </div>
             ),
-            { duration: 5000, unstyled: true }
+            {
+              duration: 5000,
+              unstyled: true,
+              className: "w-full !bg-transparent !border-0 !shadow-none !p-0",
+            }
           );
         }
 
