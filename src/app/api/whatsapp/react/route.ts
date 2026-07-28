@@ -59,65 +59,45 @@ export async function POST(request: Request) {
       );
     }
 
-    const admin = supabaseAdmin();
-
-    // Check if message_id is a UUID format to prevent PostgreSQL 22P02 errors
+    // Use ONLY the user session client (RLS-protected) — this avoids
+    // admin client env var issues on the production server while still
+    // being secure (the user can only see their own account's messages).
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(message_id);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let targetMessage: any = null;
 
-    if (isUuid) {
-      const { data } = await admin
-        .from('messages')
-        .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
-        .eq('id', message_id)
-        .maybeSingle();
-      targetMessage = data;
+    // Strategy: try user client first (works with RLS), then admin as fallback
+    const clients = [supabase, supabaseAdmin()];
+
+    for (const client of clients) {
+      if (targetMessage) break;
+
+      if (isUuid) {
+        const { data } = await client
+          .from('messages')
+          .select('id, whatsapp_message_id, sender_type, conversation_id')
+          .eq('id', message_id)
+          .maybeSingle();
+        if (data) { targetMessage = data; break; }
+      }
+
+      {
+        const { data } = await client
+          .from('messages')
+          .select('id, whatsapp_message_id, sender_type, conversation_id')
+          .eq('whatsapp_message_id', message_id)
+          .maybeSingle();
+        if (data) { targetMessage = data; break; }
+      }
     }
 
     if (!targetMessage) {
-      const { data } = await admin
-        .from('messages')
-        .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
-        .eq('whatsapp_message_id', message_id)
-        .maybeSingle();
-      targetMessage = data;
-    }
-
-    if (!targetMessage) {
-      const { data } = await admin
-        .from('messages')
-        .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
-        .eq('message_id', message_id)
-        .maybeSingle();
-      targetMessage = data;
-    }
-
-    // Secondary fallback: query with user session client in case admin client env vars are unpopulated
-    if (!targetMessage && isUuid) {
-      const { data } = await supabase
-        .from('messages')
-        .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
-        .eq('id', message_id)
-        .maybeSingle();
-      targetMessage = data;
-    }
-
-    if (!targetMessage) {
-      const { data } = await supabase
-        .from('messages')
-        .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
-        .eq('whatsapp_message_id', message_id)
-        .maybeSingle();
-      targetMessage = data;
-    }
-
-    if (!targetMessage) {
+      console.error('[whatsapp/react] Message not found for id:', message_id, 'isUuid:', isUuid);
       return NextResponse.json({ error: 'Message not found' }, { status: 404 });
     }
 
-    const waMsgId = targetMessage.whatsapp_message_id || targetMessage.message_id || targetMessage.id;
+    const waMsgId = targetMessage.whatsapp_message_id || targetMessage.id;
 
     if (!waMsgId) {
       return NextResponse.json(
@@ -126,12 +106,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // Query conversation directly without join
-    const { data: conversation } = await admin
-      .from('conversations')
-      .select('id, account_id, contact_id')
-      .eq('id', targetMessage.conversation_id)
-      .maybeSingle();
+    // Query conversation — try user client first, then admin
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let conversation: any = null;
+    for (const client of clients) {
+      const { data } = await client
+        .from('conversations')
+        .select('id, account_id, contact_id')
+        .eq('id', targetMessage.conversation_id)
+        .maybeSingle();
+      if (data) { conversation = data; break; }
+    }
 
     if (!conversation) {
       return NextResponse.json(
@@ -140,15 +125,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // Query contact directly
+    // Query contact phone
     let phone: string | undefined;
     if (conversation.contact_id) {
-      const { data: contact } = await admin
-        .from('contacts')
-        .select('phone')
-        .eq('id', conversation.contact_id)
-        .maybeSingle();
-      phone = contact?.phone;
+      for (const client of clients) {
+        const { data: contact } = await client
+          .from('contacts')
+          .select('phone')
+          .eq('id', conversation.contact_id)
+          .maybeSingle();
+        if (contact?.phone) { phone = contact.phone; break; }
+      }
     }
 
     if (!phone) {
@@ -158,6 +145,7 @@ export async function POST(request: Request) {
       );
     }
 
+    const admin = supabaseAdmin();
     const { data: config } = await admin
       .from('whatsapp_config')
       .select('*')

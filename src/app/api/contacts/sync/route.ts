@@ -54,17 +54,67 @@ export async function POST() {
   let syncedCount = 0
 
   if (Array.isArray(rawContacts) && rawContacts.length > 0) {
-    const toUpsert = []
+    // Build a set of valid phone numbers for sync
+    const candidatesByPhone = new Map<string, { name: string; avatar_url: string | null }>()
     for (const item of rawContacts) {
       const cleanPhone = item.id ? item.id.replace(/\D/g, '') : ''
       if (cleanPhone && cleanPhone.length >= 8 && cleanPhone.length <= 13) {
-        toUpsert.push({
-          account_id: accountId,
-          phone: cleanPhone,
-          name: item.name || item.pushName || `+${cleanPhone}`,
-          avatar_url: item.pictureUrl || null,
-        })
+        const name = item.name || item.pushName || `+${cleanPhone}`
+        const avatar_url = item.pictureUrl || null
+        // Only set name if we don't already have a better one
+        if (!candidatesByPhone.has(cleanPhone)) {
+          candidatesByPhone.set(cleanPhone, { name, avatar_url })
+        } else {
+          const existing = candidatesByPhone.get(cleanPhone)!
+          // Prefer a real name over a phone number placeholder
+          if (existing.name.startsWith('+') && !name.startsWith('+')) {
+            existing.name = name
+          }
+          if (avatar_url && !existing.avatar_url) {
+            existing.avatar_url = avatar_url
+          }
+        }
       }
+    }
+
+    // Fetch existing contacts so we don't overwrite good names with generic ones
+    const phones = Array.from(candidatesByPhone.keys())
+    const { data: existingContacts } = await admin
+      .from('contacts')
+      .select('phone, name')
+      .eq('account_id', accountId)
+      .in('phone', phones)
+
+    const existingNameByPhone = new Map<string, string>()
+    if (existingContacts) {
+      for (const c of existingContacts) {
+        if (c.phone && c.name) {
+          existingNameByPhone.set(c.phone, c.name)
+        }
+      }
+    }
+
+    const toUpsert = []
+    for (const [phone, candidate] of candidatesByPhone) {
+      const existingName = existingNameByPhone.get(phone)
+
+      // If contact already exists in DB with a proper name, don't overwrite it
+      // unless the new name is actually better (not a phone number placeholder)
+      let finalName = candidate.name
+      if (existingName && !existingName.startsWith('+')) {
+        // Existing name is real — only overwrite if new name is also real and different
+        // AND not a generic group subject or placeholder
+        if (finalName.startsWith('+') || finalName === existingName) {
+          finalName = existingName
+        }
+      }
+
+      toUpsert.push({
+        account_id: accountId,
+        phone,
+        name: finalName,
+        avatar_url: candidate.avatar_url,
+      })
     }
 
     if (toUpsert.length > 0) {
