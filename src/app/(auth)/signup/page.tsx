@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -14,10 +14,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { MessageSquare, CheckCircle, UsersRound } from "lucide-react";
+import { CheckCircle, UsersRound, ShieldAlert } from "lucide-react";
+import { isAllowedEmailDomain, ALLOWED_EMAIL_DOMAIN } from "@/lib/auth/email-domain";
 
-// `useSearchParams` opts the component out of static prerendering
-// unless wrapped in Suspense — same pattern as /login.
 export default function SignupPage() {
   return (
     <Suspense fallback={null}>
@@ -28,15 +27,11 @@ export default function SignupPage() {
 
 function SignupPageInner() {
   const searchParams = useSearchParams();
-  // When the user lands here from `/join/<token>` we carry the
-  // invite token in the query so it survives the signup → email
-  // verification → redirect round-trip. `emailRedirectTo` below
-  // points back at /join/<token> so the user lands on the redeem
-  // step after verifying instead of being dropped on /dashboard.
   const inviteToken = searchParams.get("invite");
+  const invitedEmail = searchParams.get("email");
 
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(invitedEmail || "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -44,29 +39,71 @@ function SignupPageInner() {
   const [success, setSuccess] = useState(false);
   const supabase = createClient();
 
+  useEffect(() => {
+    if (invitedEmail) {
+      setEmail(invitedEmail);
+    }
+  }, [invitedEmail]);
+
+  // Block public registration if there is no invite token
+  if (!inviteToken) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <Card className="w-full max-w-md border-border bg-card shadow-xl">
+          <CardHeader className="items-center text-center">
+            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500">
+              <ShieldAlert className="h-6 w-6" />
+            </div>
+            <CardTitle className="text-xl text-foreground">
+              Cadastro Restrito
+            </CardTitle>
+            <CardDescription className="text-muted-foreground mt-2 leading-relaxed">
+              O acesso a este sistema é restrito apenas a usuários convidados do domínio{" "}
+              <strong className="text-foreground">{ALLOWED_EMAIL_DOMAIN}</strong>.
+              <br />
+              Solicite um link de convite ao administrador do sistema para realizar seu cadastro.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/login">
+              <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
+                Ir para o Login
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
+    // Validate email domain restriction (@edu.campos.rj.gov.br)
+    if (!isAllowedEmailDomain(email)) {
+      setError(`Apenas e-mails do domínio ${ALLOWED_EMAIL_DOMAIN} são permitidos.`);
+      return;
+    }
+
+    if (invitedEmail && email.trim().toLowerCase() !== invitedEmail.trim().toLowerCase()) {
+      setError(`O e-mail digitado deve ser exatamente o mesmo do convite (${invitedEmail}).`);
+      return;
+    }
+
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError("As senhas não coincidem.");
       return;
     }
 
     if (password.length < 6) {
-      setError("Password must be at least 6 characters");
+      setError("A senha deve ter pelo menos 6 caracteres.");
       return;
     }
 
     setLoading(true);
 
-    // If we have an invite token, point Supabase's verification
-    // email back at the join page so the user can accept after
-    // verifying. Without a token, Supabase uses its default
-    // redirect (the app root).
-    const emailRedirectTo = inviteToken
-      ? `${window.location.origin}/join/${encodeURIComponent(inviteToken)}`
-      : undefined;
+    const emailRedirectTo = `${window.location.origin}/join/${encodeURIComponent(inviteToken)}`;
 
     const { error } = await supabase.auth.signUp({
       email,
@@ -75,7 +112,7 @@ function SignupPageInner() {
         data: {
           full_name: fullName,
         },
-        ...(emailRedirectTo ? { emailRedirectTo } : {}),
+        emailRedirectTo,
       },
     });
 
@@ -98,27 +135,22 @@ function SignupPageInner() {
               <CheckCircle className="h-6 w-6 text-primary" />
             </div>
             <CardTitle className="text-xl text-foreground">
-              Check your email
+              Verifique seu e-mail
             </CardTitle>
             <CardDescription className="text-muted-foreground">
-              We&apos;ve sent a confirmation link to{" "}
-              <span className="text-foreground">{email}</span>. Please check your
-              inbox and click the link to verify your account.
+              Enviamos um link de confirmação para{" "}
+              <span className="text-foreground font-semibold">{email}</span>. Acesse sua caixa de entrada para confirmar e aceitar o convite.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Link
-              href={
-                inviteToken
-                  ? `/login?invite=${encodeURIComponent(inviteToken)}`
-                  : "/login"
-              }
+              href={`/login?invite=${encodeURIComponent(inviteToken)}`}
             >
               <Button
                 variant="outline"
                 className="w-full border-border text-muted-foreground hover:bg-muted hover:text-foreground"
               >
-                Back to sign in
+                Voltar para o login
               </Button>
             </Link>
           </CardContent>
@@ -132,19 +164,13 @@ function SignupPageInner() {
       <Card className="w-full max-w-md border-border bg-card">
         <CardHeader className="items-center text-center">
           <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-            {inviteToken ? (
-              <UsersRound className="h-6 w-6 text-primary" />
-            ) : (
-              <MessageSquare className="h-6 w-6 text-primary" />
-            )}
+            <UsersRound className="h-6 w-6 text-primary" />
           </div>
           <CardTitle className="text-xl text-foreground">
-            {inviteToken ? "Create account & join" : "Create account"}
+            Criar conta e aceitar convite
           </CardTitle>
           <CardDescription className="text-muted-foreground">
-            {inviteToken
-              ? "Verify your email, then accept the invitation to join your team."
-              : "Get started with CRM Template for WhatsApp"}
+            Confirme seus dados para se juntar à equipe no domínio {ALLOWED_EMAIL_DOMAIN}.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -157,12 +183,12 @@ function SignupPageInner() {
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="fullName" className="text-muted-foreground">
-                Full name
+                Nome completo
               </Label>
               <Input
                 id="fullName"
                 type="text"
-                placeholder="John Doe"
+                placeholder="Seu Nome"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required
@@ -172,14 +198,15 @@ function SignupPageInner() {
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="email" className="text-muted-foreground">
-                Email
+                E-mail institucional ({ALLOWED_EMAIL_DOMAIN})
               </Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="you@example.com"
+                placeholder={`usuario${ALLOWED_EMAIL_DOMAIN}`}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                readOnly={!!invitedEmail}
                 required
                 className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
               />
@@ -187,12 +214,12 @@ function SignupPageInner() {
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="password" className="text-muted-foreground">
-                Password
+                Senha
               </Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="At least 6 characters"
+                placeholder="Mínimo de 6 caracteres"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -202,12 +229,12 @@ function SignupPageInner() {
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="confirmPassword" className="text-muted-foreground">
-                Confirm password
+                Confirmar senha
               </Label>
               <Input
                 id="confirmPassword"
                 type="password"
-                placeholder="Repeat your password"
+                placeholder="Repita sua senha"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
@@ -220,21 +247,17 @@ function SignupPageInner() {
               disabled={loading}
               className="mt-2 h-10 w-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              {loading ? "Creating account..." : "Create account"}
+              {loading ? "Criando conta..." : "Criar conta e aceitar convite"}
             </Button>
           </form>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            Already have an account?{" "}
+            Já possui uma conta?{" "}
             <Link
-              href={
-                inviteToken
-                  ? `/login?invite=${encodeURIComponent(inviteToken)}`
-                  : "/login"
-              }
+              href={`/login?invite=${encodeURIComponent(inviteToken)}`}
               className="text-primary hover:text-primary/80"
             >
-              Sign in
+              Entrar
             </Link>
           </p>
         </CardContent>

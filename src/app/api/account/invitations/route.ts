@@ -179,14 +179,20 @@ export async function POST(request: Request) {
     if (!limit.success) return rateLimitResponse(limit);
 
     const body = (await request.json().catch(() => null)) as
-      | { role?: unknown; expiresInDays?: unknown; label?: unknown }
+      | { role?: unknown; expiresInDays?: unknown; label?: unknown; email?: unknown }
       | null;
+
+    const email = typeof body?.email === "string" ? body.email.trim() : "";
+    const { isAllowedEmailDomain } = await import("@/lib/auth/email-domain");
+    if (!email || !isAllowedEmailDomain(email)) {
+      return NextResponse.json(
+        { error: "O e-mail do convidado é obrigatório e deve possuir o domínio @edu.campos.rj.gov.br" },
+        { status: 400 },
+      );
+    }
 
     const role = body?.role;
     if (!isAccountRole(role) || role === "owner") {
-      // The DB CHECK already rejects 'owner', but failing fast
-      // here gives a clearer 400 than the eventual constraint
-      // violation surfaced as a 500.
       return NextResponse.json(
         { error: "'role' must be one of admin, agent, viewer" },
         { status: 400 },
@@ -194,15 +200,12 @@ export async function POST(request: Request) {
     }
 
     const expiresInDaysRaw = body?.expiresInDays;
-    // `clampExpiryDays` tolerates undefined / NaN / negatives by
-    // collapsing to the safe default, so we just pass the raw
-    // value through after a type narrow.
     const expiresInDays =
       typeof expiresInDaysRaw === "number" ? expiresInDaysRaw : undefined;
     const expiryDays = clampExpiryDays(expiresInDays);
     const expiresAt = inviteExpiresAt(expiryDays);
 
-    let label: string | null = null;
+    let label: string | null = email;
     if (typeof body?.label === "string") {
       const trimmed = body.label.trim();
       if (trimmed.length > MAX_LABEL_LEN) {
@@ -211,7 +214,7 @@ export async function POST(request: Request) {
           { status: 400 },
         );
       }
-      label = trimmed === "" ? null : trimmed;
+      if (trimmed !== "") label = trimmed;
     }
 
     const { token, hash } = generateInviteToken();
@@ -237,12 +240,14 @@ export async function POST(request: Request) {
       );
     }
 
+    const rawUrl = inviteUrl(token, getBaseUrl(request));
+    const finalUrl = `${rawUrl}?email=${encodeURIComponent(email.toLowerCase())}`;
+
     return NextResponse.json(
       {
         invitation: data,
-        // Plaintext payload — visible to the admin exactly once.
         token,
-        url: inviteUrl(token, getBaseUrl(request)),
+        url: finalUrl,
         expiresInDays: expiryDays,
       },
       { status: 201 },

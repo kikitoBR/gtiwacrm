@@ -39,6 +39,8 @@ import {
 import { useTranslations } from 'next-intl';
 import { useAuth } from '@/hooks/use-auth';
 
+import { isAllowedEmailDomain, ALLOWED_EMAIL_DOMAIN } from '@/lib/auth/email-domain';
+
 type InviteRole = 'admin' | 'agent' | 'viewer';
 
 interface InviteMemberDialogProps {
@@ -55,17 +57,12 @@ const EXPIRY_OPTIONS = [
   { value: '30', labelKey: 'days30' },
 ];
 
-// Server caps label at 80 chars (see src/app/api/account/invitations/route.ts).
-// Mirror it on the client so we short-circuit before the round-trip
-// rather than letting the user submit and bounce off a 400.
 const MAX_LABEL_LEN = 80;
 
 interface CreatedInvite {
   url: string;
   role: InviteRole;
   expiresInDays: number;
-  /** Snapshotted at creation time so a later account rename can't
-   *  retroactively change the wa.me message text on the result step. */
   accountName: string;
 }
 
@@ -78,6 +75,7 @@ export function InviteMemberDialog({
   const tRoles = useTranslations('Settings.roles');
   const { account } = useAuth();
   const [role, setRole] = useState<InviteRole>('agent');
+  const [email, setEmail] = useState('');
   const [expiry, setExpiry] = useState<string>('7');
   const [label, setLabel] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -85,6 +83,7 @@ export function InviteMemberDialog({
 
   function reset() {
     setRole('agent');
+    setEmail('');
     setExpiry('7');
     setLabel('');
     setResult(null);
@@ -92,12 +91,12 @@ export function InviteMemberDialog({
   }
 
   async function handleCreate() {
-    // Mirror the server's max-length check so we don't ship an
-    // obviously-too-long label across the wire just to bounce off
-    // a 400. The Input also has a `maxLength={MAX_LABEL_LEN}` cap
-    // but a paste can land an over-limit string into state before
-    // the limit kicks in on the next keystroke — this is the safety
-    // net for that path.
+    const trimmedEmail = email.trim();
+    if (!isAllowedEmailDomain(trimmedEmail)) {
+      toast.error(`O e-mail é obrigatório e deve ser do domínio ${ALLOWED_EMAIL_DOMAIN}`);
+      return;
+    }
+
     const trimmedLabel = label.trim();
     if (trimmedLabel.length > MAX_LABEL_LEN) {
       toast.error(t('labelTooLong', { max: MAX_LABEL_LEN }));
@@ -110,6 +109,7 @@ export function InviteMemberDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           role,
+          email: trimmedEmail,
           expiresInDays: Number(expiry),
           label: trimmedLabel || undefined,
         }),
@@ -267,6 +267,23 @@ export function InviteMemberDialog({
             </DialogHeader>
 
             <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">
+                  E-mail do Convidado <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  type="email"
+                  placeholder="usuario@edu.campos.rj.gov.br"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  O convite é exclusivo para o domínio @edu.campos.rj.gov.br
+                </p>
+              </div>
+
               <div className="space-y-2">
                 <Label className="text-muted-foreground">{t('roleLabel')}</Label>
                 <Select
