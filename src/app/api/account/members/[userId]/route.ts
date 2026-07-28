@@ -165,31 +165,45 @@ export async function DELETE(
       );
     }
 
-    // Create fresh personal account for removed member
-    const accountName =
-      targetProfile.full_name?.trim() ||
-      targetProfile.email?.trim() ||
-      "Minha Conta";
-
-    const { data: newAccount, error: accErr } = await admin
+    // Check if member already has a personal account (idx_accounts_one_per_owner)
+    const { data: existingPersonalAcc } = await admin
       .from("accounts")
-      .insert({
-        name: accountName,
-        owner_user_id: userId,
-      })
       .select("id")
-      .single();
+      .eq("owner_user_id", userId)
+      .maybeSingle();
 
-    if (accErr || !newAccount) {
-      console.error("[DELETE member fallback] Failed to create new personal account:", accErr);
-      return rpcErrorToResponse(error);
+    let targetAccountId = existingPersonalAcc?.id;
+
+    if (!targetAccountId) {
+      const accountName =
+        targetProfile.full_name?.trim() ||
+        targetProfile.email?.trim() ||
+        "Minha Conta";
+
+      const { data: newAccount, error: accErr } = await admin
+        .from("accounts")
+        .insert({
+          name: accountName,
+          owner_user_id: userId,
+        })
+        .select("id")
+        .single();
+
+      if (accErr || !newAccount) {
+        console.error("[DELETE member fallback] Failed to create personal account:", accErr);
+        return NextResponse.json(
+          { error: "Falha ao criar conta pessoal para o membro." },
+          { status: 500 },
+        );
+      }
+      targetAccountId = newAccount.id;
     }
 
-    // Relocate member's profile to their new personal account
+    // Relocate member's profile to their personal account
     const { error: updateErr } = await admin
       .from("profiles")
       .update({
-        account_id: newAccount.id,
+        account_id: targetAccountId,
         role: "owner",
         account_role: "owner",
         updated_at: new Date().toISOString(),
@@ -197,11 +211,14 @@ export async function DELETE(
       .eq("user_id", userId);
 
     if (updateErr) {
-      console.error("[DELETE member fallback] Failed to update target profile:", updateErr);
-      return rpcErrorToResponse(error);
+      console.error("[DELETE member fallback] Failed to update profile:", updateErr);
+      return NextResponse.json(
+        { error: "Falha ao atualizar perfil do membro." },
+        { status: 500 },
+      );
     }
 
-    return NextResponse.json({ ok: true, newPersonalAccountId: newAccount.id });
+    return NextResponse.json({ ok: true, newPersonalAccountId: targetAccountId });
   } catch (err) {
     return toErrorResponse(err);
   }

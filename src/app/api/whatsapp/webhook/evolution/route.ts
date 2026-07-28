@@ -474,11 +474,16 @@ export async function POST(request: Request) {
 
         // Embed participant info in message text (for all content types including audio/media).
         // Only include phone when it's a real phone (not an unresolved LID).
-        if (pName) {
+        if (pName && (contentText.trim() || contentType !== 'text')) {
           const displayPhone = (!isLidUnresolved && pPhone && pPhone !== senderPhone) ? pPhone : null
           const prefix = displayPhone ? `*${pName}|${displayPhone}:*` : `*${pName}:*`
-          contentText = contentText ? `${prefix} ${contentText}` : `${prefix} `
+          contentText = contentText.trim() ? `${prefix} ${contentText}` : `${prefix}`
         }
+      }
+
+      // Ignore messages with no text content and no media attachment (e.g. unparsed edit/protocol frames)
+      if (!contentText.trim() && !mediaUrl) {
+        return NextResponse.json({ status: 'ignored', reason: 'Empty content text and no media' }, { status: 200 })
       }
 
       const messageId = key.id
