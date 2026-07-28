@@ -47,16 +47,16 @@ export interface SectionMeta {
 }
 
 export const SECTION_META: Record<SettingsSection, SectionMeta> = {
-  overview: { id: 'overview', label: 'Overview', icon: LayoutGrid, group: 'top' },
-  profile: { id: 'profile', label: 'Your profile', icon: User, group: 'account' },
+  overview: { id: 'overview', label: 'Visão Geral', icon: LayoutGrid, group: 'top' },
+  profile: { id: 'profile', label: 'Seu perfil', icon: User, group: 'account' },
   signature: { id: 'signature', label: 'Assinatura', icon: UserCheck, group: 'account' },
-  security: { id: 'security', label: 'Login & security', icon: Shield, group: 'account' },
-  appearance: { id: 'appearance', label: 'Appearance', icon: Palette, group: 'account' },
+  security: { id: 'security', label: 'Login & segurança', icon: Shield, group: 'account' },
+  appearance: { id: 'appearance', label: 'Aparência', icon: Palette, group: 'account' },
   whatsapp: { id: 'whatsapp', label: 'WhatsApp', icon: PlugZap, group: 'workspace', adminOnly: true },
-  'quick-replies': { id: 'quick-replies', label: 'Quick replies', icon: Zap, group: 'workspace' },
-  fields: { id: 'fields', label: 'Fields & tags', icon: Tags, group: 'workspace', adminOnly: true },
-  members: { id: 'members', label: 'Team members', icon: UsersRound, group: 'workspace', adminOnly: true },
-  api: { id: 'api', label: 'API keys', icon: KeyRound, group: 'workspace', adminOnly: true },
+  'quick-replies': { id: 'quick-replies', label: 'Respostas rápidas', icon: Zap, group: 'workspace' },
+  fields: { id: 'fields', label: 'Campos & tags', icon: Tags, group: 'workspace', adminOnly: true },
+  members: { id: 'members', label: 'Membros do time', icon: UsersRound, group: 'workspace', adminOnly: true },
+  api: { id: 'api', label: 'Chaves de API', icon: KeyRound, group: 'workspace', adminOnly: true },
 };
 
 export const RAIL_GROUPS: { label: string | null; group: SectionMeta['group'] }[] = [

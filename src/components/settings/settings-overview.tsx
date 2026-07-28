@@ -41,7 +41,6 @@ export function SettingsOverview({
   const { mode, theme } = useTheme();
   const t = useTranslations('Settings.overview');
   const tRoles = useTranslations('roles');
-  const tSections = useTranslations('Settings.sections');
 
   const [counts, setCounts] = useState<OverviewCounts | null>(null);
   const [countsLoading, setCountsLoading] = useState(true);
@@ -262,7 +261,7 @@ export function SettingsOverview({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold text-foreground">
-                  {tSections(section)}
+                  {meta.label}
                 </span>
                 <span className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                   {loading ? (
