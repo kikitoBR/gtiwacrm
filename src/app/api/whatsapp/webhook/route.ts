@@ -1006,8 +1006,17 @@ export async function findOrCreateContact(
   if (existingContact) {
     const updates: Record<string, unknown> = {}
     if (name && name !== existingContact.name) {
-      if (!isGroup || isExplicitName) {
-        updates.name = name
+      const cleanPhone = phone.replace(/\D/g, '')
+      const cleanNewName = name.replace(/\D/g, '')
+      const isNewNamePhone = cleanNewName === cleanPhone || name.startsWith('+') || /^\d+$/.test(cleanNewName) || name.includes('Gerência de tecnologia')
+      const cleanExistingName = (existingContact.name || '').replace(/\D/g, '')
+      const isExistingPlaceholder = !existingContact.name || cleanExistingName === cleanPhone || existingContact.name.startsWith('+') || /^\d+$/.test(cleanExistingName) || existingContact.name.includes('Gerência de tecnologia')
+
+      // NEVER overwrite an existing real name with a phone number, group subject, or placeholder!
+      if (!isNewNamePhone && (isExistingPlaceholder || isExplicitName)) {
+        if (!isGroup || isExplicitName) {
+          updates.name = name
+        }
       }
     }
     if (avatarUrl && avatarUrl !== existingContact.avatar_url) {
