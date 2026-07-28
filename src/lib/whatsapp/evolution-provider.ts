@@ -553,54 +553,64 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       }> = []
 
       if (Array.isArray(rawParticipants) && rawParticipants.length > 0) {
-        // Resolve participants in concurrent chunks of 15
-        const CHUNK_SIZE = 15
-        for (let i = 0; i < rawParticipants.length; i += CHUNK_SIZE) {
-          const chunk = rawParticipants.slice(i, i + CHUNK_SIZE)
-          const resolvedChunk = await Promise.all(
-            chunk.map(async (p) => {
-              const rawId = typeof p === 'string' ? p : p?.id || p?.jid || p?.number || ''
-              const rawLid = typeof p === 'object' ? p?.lid || '' : ''
-              const admin = typeof p === 'object' ? (p?.admin || p?.role || null) : null
+        let uncachedLidCount = 0
+        const MAX_UNCACHED_LID_FETCHES = 10
 
-              if (!rawId && !rawLid) return null
+        for (const p of rawParticipants) {
+          const rawId = typeof p === 'string' ? p : p?.id || p?.jid || p?.number || ''
+          const rawLid = typeof p === 'object' ? p?.lid || '' : ''
+          const admin = typeof p === 'object' ? (p?.admin || p?.role || null) : null
 
-              const targetJid = rawLid || rawId
-              const isLid = targetJid.includes('@lid') || this.cleanJidToDigits(targetJid).length > 13
+          if (!rawId && !rawLid) continue
 
-              if (isLid) {
-                const resolved = await this.resolveLidToPhone(targetJid)
-                if (resolved) {
-                  return {
-                    id: targetJid,
-                    phone: resolved.phone,
-                    name: resolved.name,
-                    avatar_url: resolved.picture,
-                    admin,
-                  }
-                }
-                return {
+          const targetJid = rawLid || rawId
+          const isLid = targetJid.includes('@lid') || this.cleanJidToDigits(targetJid).length > 13
+
+          if (isLid) {
+            const cleanedLid = this.cleanJidToDigits(targetJid)
+            if (this.lidCache.has(cleanedLid)) {
+              const cached = this.lidCache.get(cleanedLid)!
+              parsedParticipants.push({
+                id: targetJid,
+                phone: cached.phone,
+                name: cached.name,
+                avatar_url: cached.picture,
+                admin,
+              })
+            } else if (uncachedLidCount < MAX_UNCACHED_LID_FETCHES) {
+              uncachedLidCount++
+              const resolved = await this.resolveLidToPhone(targetJid)
+              if (resolved) {
+                parsedParticipants.push({
+                  id: targetJid,
+                  phone: resolved.phone,
+                  name: resolved.name,
+                  avatar_url: resolved.picture,
+                  admin,
+                })
+              } else {
+                parsedParticipants.push({
                   id: targetJid,
                   phone: null,
                   admin,
-                }
+                })
               }
-
-              const cleanPhone = this.cleanJidToDigits(rawId)
-              if (cleanPhone && cleanPhone.length >= 8 && cleanPhone.length <= 13) {
-                return {
-                  id: rawId,
-                  phone: cleanPhone,
-                  admin,
-                }
-              }
-
-              return null
-            })
-          )
-
-          for (const item of resolvedChunk) {
-            if (item) parsedParticipants.push(item)
+            } else {
+              parsedParticipants.push({
+                id: targetJid,
+                phone: null,
+                admin,
+              })
+            }
+          } else {
+            const cleanPhone = this.cleanJidToDigits(rawId)
+            if (cleanPhone && cleanPhone.length >= 8 && cleanPhone.length <= 13) {
+              parsedParticipants.push({
+                id: rawId,
+                phone: cleanPhone,
+                admin,
+              })
+            }
           }
         }
       }

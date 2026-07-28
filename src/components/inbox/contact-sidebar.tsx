@@ -54,6 +54,10 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
 
+  // Avatar error fallback states
+  const [headerAvatarError, setHeaderAvatarError] = useState(false);
+  const [failedMemberAvatars, setFailedMemberAvatars] = useState<Record<string, boolean>>({});
+
   // Group state
   const [groupData, setGroupData] = useState<GroupData | null>(null);
   const [loadingGroup, setLoadingGroup] = useState(false);
@@ -117,11 +121,13 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
   }, [contact, conversationId, isGroup]);
 
   useEffect(() => {
+    setHeaderAvatarError(false);
+    setFailedMemberAvatars({});
     fetchContactData();
     if (isGroup) {
       fetchGroupData();
     }
-  }, [fetchContactData, fetchGroupData, isGroup]);
+  }, [contact?.id, fetchContactData, fetchGroupData, isGroup]);
 
   const handleCopyPhone = useCallback(async () => {
     if (!contact?.phone) return;
@@ -192,11 +198,12 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
         {/* Header Info */}
         <div className="flex flex-col items-center text-center">
           <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-muted text-xl font-bold text-foreground overflow-hidden ring-2 ring-primary/20 shadow-md">
-            {avatarImage ? (
+            {avatarImage && !headerAvatarError ? (
               <img
                 src={avatarImage}
                 alt={displayName}
                 className="h-20 w-20 rounded-full object-cover"
+                onError={() => setHeaderAvatarError(true)}
               />
             ) : (
               initials
@@ -347,6 +354,9 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
                           src={m.media_url}
                           alt="Mídia"
                           className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none";
+                          }}
                         />
                       </a>
                     ))}
@@ -434,24 +444,29 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
                 <p className="py-4 text-center text-xs text-muted-foreground">Nenhum membro encontrado</p>
               ) : (
                 filteredMembers.map((member, idx) => {
+                  const memberKey = member.phone || member.name || `mem-${idx}`;
+                  const hasAvatarErr = failedMemberAvatars[memberKey];
                   const displayMemberPhone = member.phone
                     ? (member.phone.startsWith("+") ? member.phone : `+${member.phone}`)
                     : null;
 
                   return (
                     <div
-                      key={member.phone || `mem-${idx}`}
+                      key={memberKey}
                       onClick={() => member.phone && onNavigateToContact && onNavigateToContact(member.phone)}
                       className={`flex items-center gap-2.5 rounded-lg p-2 transition-colors hover:bg-muted/70 ${
                         member.phone ? "cursor-pointer group" : "cursor-default"
                       }`}
                     >
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground overflow-hidden ring-1 ring-border">
-                        {member.avatar_url ? (
+                        {member.avatar_url && !hasAvatarErr ? (
                           <img
                             src={member.avatar_url}
                             alt={member.name}
                             className="h-8 w-8 rounded-full object-cover"
+                            onError={() =>
+                              setFailedMemberAvatars((prev) => ({ ...prev, [memberKey]: true }))
+                            }
                           />
                         ) : (
                           member.name.charAt(0).toUpperCase()
