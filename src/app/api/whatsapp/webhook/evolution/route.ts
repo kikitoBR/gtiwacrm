@@ -363,11 +363,12 @@ export async function POST(request: Request) {
           }).catch(() => {})
         }
 
-        // Embed participant info in message text.
+        // Embed participant info in message text (for all content types including audio/media).
         // Only include phone when it's a real phone (not an unresolved LID).
-        if (pName && contentText) {
+        if (pName) {
           const displayPhone = (!isLidUnresolved && pPhone && pPhone !== senderPhone) ? pPhone : null
-          contentText = displayPhone ? `*${pName}|${displayPhone}:* ${contentText}` : `*${pName}:* ${contentText}`
+          const prefix = displayPhone ? `*${pName}|${displayPhone}:*` : `*${pName}:*`
+          contentText = contentText ? `${prefix} ${contentText}` : `${prefix} `
         }
       }
 

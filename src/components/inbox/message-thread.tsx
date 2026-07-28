@@ -1250,11 +1250,14 @@ export function MessageThread({
                     const { participantName, participantPhone: pPhone } = isGroup && msg.sender_type === "customer"
                       ? parseGroupMessage(msg.content_text)
                       : { participantName: null, participantPhone: null };
-                    const participantContact = participantName
+                    let participantContact = participantName
                       ? (participantsMap.get(participantName.toLowerCase())
                          ?? (pPhone ? participantsMap.get(pPhone.toLowerCase()) : null)
                          ?? null)
                       : null;
+                    if (isGroup && msg.sender_type === "customer" && !participantContact && participantsMap.size > 0) {
+                      participantContact = Array.from(participantsMap.values())[0] || null;
+                    }
 
                     return (
                       <MessageActions
