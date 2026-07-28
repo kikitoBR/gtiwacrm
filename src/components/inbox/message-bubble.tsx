@@ -15,6 +15,11 @@ import {
   CornerDownLeft,
   Sparkles,
   Ban,
+  ZoomIn,
+  Download,
+  ExternalLink,
+  X,
+  Maximize2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -61,10 +66,11 @@ function MediaUnavailable({ label, t }: { label: string, t: ReturnType<typeof us
   );
 }
 
-function MediaImage({ url, alt }: { url: string; alt: string }) {
+function MediaImage({ url, alt, caption }: { url: string; alt: string; caption?: string }) {
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
 
   const loadImage = useCallback(async () => {
     if (!url) return;
@@ -98,6 +104,15 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadImage]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
+
   if (error) {
     return (
       <div className="flex h-40 w-60 items-center justify-center rounded-lg bg-muted">
@@ -114,13 +129,173 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
     );
   }
 
+  const mediaSrc = src ?? "";
+
   return (
-    <img
-      src={src ?? ""}
-      alt={alt}
-      className="max-h-64 max-w-60 rounded-lg object-cover"
-      onError={() => setError(true)}
-    />
+    <>
+      <div
+        className="group relative cursor-pointer overflow-hidden rounded-lg"
+        onClick={() => setIsOpen(true)}
+      >
+        <img
+          src={mediaSrc}
+          alt={alt}
+          className="max-h-64 max-w-60 rounded-lg object-cover transition-transform duration-200 group-hover:scale-105"
+          onError={() => setError(true)}
+        />
+        <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <div className="flex items-center gap-1.5 rounded-full bg-black/75 px-3 py-1.5 text-xs font-medium text-white shadow-xl backdrop-blur-sm">
+            <ZoomIn className="h-3.5 w-3.5" />
+            <span>Ampliar</span>
+          </div>
+        </div>
+      </div>
+
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md transition-all duration-200 animate-in fade-in"
+          onClick={() => setIsOpen(false)}
+        >
+          <div
+            className="relative flex max-h-[90vh] max-w-[90vw] flex-col items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top Toolbar */}
+            <div className="absolute -top-12 right-0 flex items-center gap-2">
+              <a
+                href={mediaSrc}
+                download="imagem-whatsapp.jpg"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                title="Baixar imagem"
+              >
+                <Download className="h-4 w-4" />
+              </a>
+              <a
+                href={mediaSrc}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                title="Abrir em nova aba"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </a>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                title="Fechar (Esc)"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Image */}
+            <img
+              src={mediaSrc}
+              alt={alt}
+              className="max-h-[80vh] max-w-[85vw] rounded-lg object-contain shadow-2xl"
+            />
+
+            {/* Caption */}
+            {caption && (
+              <p className="mt-3 max-w-xl text-center text-sm font-medium text-white/90">
+                {caption}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function MediaVideo({ url, caption }: { url: string; caption?: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
+
+  return (
+    <>
+      <div className="group relative max-w-60 overflow-hidden rounded-lg">
+        <video
+          src={url}
+          controls
+          className="max-h-64 max-w-60 rounded-lg"
+        />
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          className="absolute top-2 right-2 flex items-center gap-1.5 rounded-full bg-black/75 px-2.5 py-1 text-[11px] font-medium text-white opacity-90 transition-opacity hover:opacity-100 backdrop-blur-sm shadow-md"
+          title="Expandir vídeo"
+        >
+          <Maximize2 className="h-3 w-3" />
+          <span>Expandir</span>
+        </button>
+      </div>
+
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md transition-all duration-200 animate-in fade-in"
+          onClick={() => setIsOpen(false)}
+        >
+          <div
+            className="relative flex max-h-[90vh] max-w-[90vw] flex-col items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top Toolbar */}
+            <div className="absolute -top-12 right-0 flex items-center gap-2">
+              <a
+                href={url}
+                download="video-whatsapp.mp4"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                title="Baixar vídeo"
+              >
+                <Download className="h-4 w-4" />
+              </a>
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                title="Abrir em nova aba"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </a>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                title="Fechar (Esc)"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Video Player */}
+            <video
+              src={url}
+              controls
+              autoPlay
+              className="max-h-[80vh] max-w-[85vw] rounded-lg shadow-2xl"
+            />
+
+            {/* Caption */}
+            {caption && (
+              <p className="mt-3 max-w-xl text-center text-sm font-medium text-white/90">
+                {caption}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -137,7 +312,11 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
       return (
         <div>
           {message.media_url ? (
-            <MediaImage url={message.media_url} alt="Shared image" />
+            <MediaImage
+              url={message.media_url}
+              alt="Shared image"
+              caption={message.content_text}
+            />
           ) : (
             <MediaUnavailable label={t("photo")} t={t} />
           )}
@@ -153,10 +332,9 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
       return (
         <div>
           {message.media_url ? (
-            <video
-              src={message.media_url}
-              controls
-              className="max-h-64 max-w-60 rounded-lg"
+            <MediaVideo
+              url={message.media_url}
+              caption={message.content_text}
             />
           ) : (
             <MediaUnavailable label={t("video")} t={t} />
