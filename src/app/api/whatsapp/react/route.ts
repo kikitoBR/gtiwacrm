@@ -59,9 +59,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Use ONLY the user session client (RLS-protected) — this avoids
-    // admin client env var issues on the production server while still
-    // being secure (the user can only see their own account's messages).
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(message_id);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -73,20 +70,32 @@ export async function POST(request: Request) {
     for (const client of clients) {
       if (targetMessage) break;
 
+      // 1. Match by primary key id (if UUID format)
       if (isUuid) {
         const { data } = await client
           .from('messages')
-          .select('id, whatsapp_message_id, sender_type, conversation_id')
+          .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
           .eq('id', message_id)
           .maybeSingle();
         if (data) { targetMessage = data; break; }
       }
 
+      // 2. Match by whatsapp_message_id column (used by Meta provider)
       {
         const { data } = await client
           .from('messages')
-          .select('id, whatsapp_message_id, sender_type, conversation_id')
+          .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
           .eq('whatsapp_message_id', message_id)
+          .maybeSingle();
+        if (data) { targetMessage = data; break; }
+      }
+
+      // 3. Match by message_id column (used by Evolution API provider)
+      {
+        const { data } = await client
+          .from('messages')
+          .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
+          .eq('message_id', message_id)
           .maybeSingle();
         if (data) { targetMessage = data; break; }
       }
@@ -97,7 +106,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Message not found' }, { status: 404 });
     }
 
-    const waMsgId = targetMessage.whatsapp_message_id || targetMessage.id;
+    // Prefer whatsapp_message_id (Meta) or message_id (Evolution), fallback to internal UUID id
+    const waMsgId = targetMessage.whatsapp_message_id || targetMessage.message_id || targetMessage.id;
 
     if (!waMsgId) {
       return NextResponse.json(
@@ -179,7 +189,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Mirror into DB
+    // Mirror reaction into DB
     const { data: existingReaction } = await supabase
       .from('message_reactions')
       .select('id')

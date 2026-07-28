@@ -77,6 +77,33 @@ export async function POST() {
       }
     }
 
+    // Clean up any corrupted contacts whose name was erroneously set to group subject
+    const { data: corruptedContacts } = await admin
+      .from('contacts')
+      .select('id, phone, name')
+      .eq('account_id', accountId)
+      .ilike('name', '%Gerência de tecnologia%')
+
+    if (corruptedContacts && corruptedContacts.length > 0) {
+      for (const c of corruptedContacts) {
+        if (c.phone && !c.phone.includes('@g.us')) {
+          const cleanPhone = c.phone.replace(/\D/g, '')
+          const candidate = candidatesByPhone.get(cleanPhone)
+          const newName =
+            candidate?.name &&
+            !candidate.name.includes('Gerência de tecnologia') &&
+            !candidate.name.startsWith('+')
+              ? candidate.name
+              : `+${cleanPhone}`
+
+          await admin
+            .from('contacts')
+            .update({ name: newName })
+            .eq('id', c.id)
+        }
+      }
+    }
+
     // Fetch existing contacts so we don't overwrite good names with generic ones
     const phones = Array.from(candidatesByPhone.keys())
     const { data: existingContacts } = await admin
@@ -101,10 +128,8 @@ export async function POST() {
       // If contact already exists in DB with a proper name, don't overwrite it
       // unless the new name is actually better (not a phone number placeholder)
       let finalName = candidate.name
-      if (existingName && !existingName.startsWith('+')) {
-        // Existing name is real — only overwrite if new name is also real and different
-        // AND not a generic group subject or placeholder
-        if (finalName.startsWith('+') || finalName === existingName) {
+      if (existingName && !existingName.startsWith('+') && !existingName.includes('Gerência de tecnologia')) {
+        if (finalName.startsWith('+') || finalName === existingName || finalName.includes('Gerência de tecnologia')) {
           finalName = existingName
         }
       }

@@ -325,11 +325,12 @@ export async function POST(request: Request) {
             pPhone,
             pName,
             undefined,
-            true
+            false // isExplicitName is false so existing real contact names are never overwritten
           ).then(async (outcome) => {
             const pContact = outcome?.contact
             if (pContact) {
-              if (item.pushName && pContact.name !== item.pushName) {
+              // Update name ONLY if current name is a generic phone number placeholder (starts with + or numbers)
+              if (item.pushName && (pContact.name.startsWith('+') || /^\d+$/.test(pContact.name.replace(/\D/g, ''))) && item.pushName !== explicitGroupName) {
                 await supabaseAdmin()
                   .from('contacts')
                   .update({ name: item.pushName })

@@ -256,12 +256,17 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     const remoteJid = toPhone.includes('@') ? toPhone : `${cleanPhone}@s.whatsapp.net`
     const fromMe = args.fromMe ?? false
     const key = { remoteJid, fromMe, id: args.targetMessageId }
+    const keyPlain = { remoteJid: cleanPhone, fromMe, id: args.targetMessageId }
 
     const payloads = [
       // Official Evolution API schema from documentation (https://docs.evolutionfoundation.com.br/evolution-api/send-reaction#send-reaction)
       {
         reactionMessage: args.emoji,
         reactionKey: key,
+      },
+      {
+        reactionMessage: args.emoji,
+        reactionKey: keyPlain,
       },
       {
         reactionMessage: { key, reaction: args.emoji },
