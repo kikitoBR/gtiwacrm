@@ -222,35 +222,16 @@ function InboxPageInner() {
     }
   }, []);
 
-  // Soft dual-tone Web Audio API chime sound
+  // Notification sound using mp3 file
+  const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
   const playNotificationChime = useCallback(() => {
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      const now = ctx.currentTime;
-
-      const osc1 = ctx.createOscillator();
-      const osc2 = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc1.type = "sine";
-      osc2.type = "sine";
-
-      osc1.frequency.setValueAtTime(587.33, now);
-      osc2.frequency.setValueAtTime(880.0, now + 0.08);
-
-      gain.gain.setValueAtTime(0.12, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-
-      osc1.connect(gain);
-      osc2.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc1.start(now);
-      osc1.stop(now + 0.15);
-      osc2.start(now + 0.08);
-      osc2.stop(now + 0.35);
+      if (!notificationAudioRef.current) {
+        notificationAudioRef.current = new Audio("/notification.mp3");
+        notificationAudioRef.current.volume = 0.5;
+      }
+      notificationAudioRef.current.currentTime = 0;
+      notificationAudioRef.current.play().catch(() => {});
     } catch {
       // Best effort audio playback
     }
@@ -724,6 +705,50 @@ function InboxPageInner() {
     [activeConversation]
   );
 
+  const handleNavigateToContact = useCallback(
+    async (phone: string) => {
+      const cleanPhone = phone.replace(/\D/g, "");
+      if (!cleanPhone) return;
+
+      const existingConv = conversations.find(
+        (c) => c.contact?.phone?.replace(/\D/g, "") === cleanPhone
+      );
+
+      if (existingConv) {
+        handleSelectConversation(existingConv);
+        return;
+      }
+
+      try {
+        const supabase = createClient();
+        const { data: contactData } = await supabase
+          .from("contacts")
+          .select("*")
+          .eq("phone", cleanPhone)
+          .maybeSingle();
+
+        if (contactData) {
+          const { data: convData } = await supabase
+            .from("conversations")
+            .select(CONVERSATION_SELECT)
+            .eq("contact_id", contactData.id)
+            .maybeSingle();
+
+          if (convData) {
+            const normalized = normalizeConversation(convData as any);
+            setConversations((prev) => [normalized, ...prev.filter((c) => c.id !== normalized.id)]);
+            setActiveConversation(normalized);
+            setActiveContact(contactData as Contact);
+            setMessages([]);
+          }
+        }
+      } catch {
+        /* ignore navigation error */
+      }
+    },
+    [conversations, handleSelectConversation]
+  );
+
   // On mobile (<lg) we show a SINGLE pane — either the list or the
   // thread — rather than cramming both side-by-side. Selecting a
   // conversation slides the thread in; the thread's back button pops
@@ -804,7 +829,10 @@ function InboxPageInner() {
             toggle — which is itself desktop-only — never affects it. */}
         {contactPanelOpen && (
           <div className="hidden lg:block">
-            <ContactSidebar contact={activeContact} />
+            <ContactSidebar
+              contact={activeContact}
+              onNavigateToContact={handleNavigateToContact}
+            />
           </div>
         )}
       </div>

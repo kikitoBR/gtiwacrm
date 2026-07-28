@@ -448,7 +448,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     }
   }
 
-  async getGroupInfo(groupJid: string): Promise<{ subject?: string; pictureUrl?: string } | null> {
+  async getGroupInfo(groupJid: string): Promise<{ subject?: string; description?: string; pictureUrl?: string } | null> {
     try {
       let data: Record<string, unknown> | null = null
       try {
@@ -471,6 +471,7 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       }
       return {
         subject: (data?.subject as string) || (data?.name as string) || (data?.groupSubject as string) || undefined,
+        description: (data?.description as string) || (data?.desc as string) || (typeof data?.desc === 'object' ? (data?.desc as { text?: string })?.text : undefined) || undefined,
         pictureUrl: (data?.pictureUrl as string) || (data?.profilePictureUrl as string) || (data?.url as string) || undefined,
       }
     } catch {
