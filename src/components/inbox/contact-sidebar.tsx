@@ -289,10 +289,10 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
             <button
               onClick={handleCopyPhone}
               disabled={rawDigits.length < 8 || rawDigits.length > 13}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted disabled:opacity-70 disabled:cursor-not-allowed"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer"
             >
               <Phone className="h-4 w-4 text-muted-foreground" />
-              <span className="flex-1 text-left">{displayPhone}</span>
+              <span className="flex-1 text-left font-medium">{displayPhone}</span>
               {rawDigits.length >= 8 && rawDigits.length <= 13 && (
                 copied ? (
                   <Check className="h-3.5 w-3.5 text-primary" />
@@ -301,6 +301,21 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
                 )
               )}
             </button>
+
+            {rawDigits.length >= 8 && rawDigits.length <= 13 && (
+              <Button
+                type="button"
+                onClick={() => {
+                  if (onNavigateToContact && contact.phone) {
+                    onNavigateToContact(contact.phone);
+                  }
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm transition-all active:scale-[0.98] cursor-pointer"
+              >
+                <MessageSquare className="h-4 w-4 fill-current" />
+                <span>Mensagem</span>
+              </Button>
+            )}
 
             {contact.email && (
               <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground">

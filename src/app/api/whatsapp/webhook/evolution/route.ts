@@ -13,6 +13,7 @@ import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { EvolutionWhatsAppProvider } from '@/lib/whatsapp/evolution-provider'
 import { getWhatsAppProvider } from '@/lib/whatsapp/provider-factory'
+import { parseGroupMessage } from '@/lib/whatsapp/group-utils'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _adminClient: any = null
@@ -199,6 +200,55 @@ export async function POST(request: Request) {
           }
         }
         return NextResponse.json({ status: 'success' }, { status: 200 })
+      }
+
+      // Check for EDITED message protocol event in messages.upsert
+      const editedPayload =
+        msg?.protocolMessage?.editedMessage ||
+        msg?.editedMessage?.message ||
+        msg?.editedMessage
+      const targetWaMsgId =
+        msg?.protocolMessage?.key?.id ||
+        msg?.editedMessage?.key?.id
+
+      if (editedPayload || (msg?.protocolMessage && (msg.protocolMessage.type === 14 || msg.protocolMessage.type === 'EDITED_MESSAGE'))) {
+        const newEditedText =
+          editedPayload?.conversation ||
+          editedPayload?.extendedTextMessage?.text ||
+          editedPayload?.text ||
+          ''
+
+        const editTargetId = targetWaMsgId || key.id
+
+        if (editTargetId && newEditedText) {
+          const { data: existingMsg } = await supabaseAdmin()
+            .from('messages')
+            .select('id, content_text')
+            .or(`message_id.eq.${editTargetId},id.eq.${editTargetId}`)
+            .maybeSingle()
+
+          if (existingMsg) {
+            let finalEditedText = newEditedText
+            if (isGroup && !fromMe && existingMsg.content_text) {
+              const { participantName, participantPhone } = parseGroupMessage(existingMsg.content_text)
+              if (participantName) {
+                const prefix = participantPhone ? `*${participantName}|${participantPhone}:*` : `*${participantName}:*`
+                finalEditedText = `${prefix} ${newEditedText}`
+              }
+            }
+
+            await supabaseAdmin()
+              .from('messages')
+              .update({
+                content_text: finalEditedText,
+                is_edited: true,
+                status: 'edited',
+              })
+              .eq('id', existingMsg.id)
+
+            return NextResponse.json({ status: 'success', edited: true }, { status: 200 })
+          }
+        }
       }
 
       // Parser de tipo de mensagem e conteúdo
