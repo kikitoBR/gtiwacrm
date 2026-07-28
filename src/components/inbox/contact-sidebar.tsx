@@ -32,6 +32,7 @@ interface GroupData {
   description: string | null;
   pictureUrl: string | null;
   owner: string | null;
+  totalParticipantsCount?: number;
   participants: { phone: string | null; name: string; avatar_url: string | null; admin?: string | null }[];
   media: { id: string; content_type: string; media_url: string; created_at: string }[];
   links: { id: string; url: string; created_at: string }[];
@@ -237,8 +238,8 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
             <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
               <Users className="h-3.5 w-3.5" />
               <span>
-                {groupData?.participants && groupData.participants.length > 0
-                  ? `${groupData.participants.length} membros`
+                {(groupData?.totalParticipantsCount || groupData?.participants?.length || 0) > 0
+                  ? `${groupData?.totalParticipantsCount || groupData?.participants?.length} membros`
                   : "Grupo WhatsApp"}
               </span>
             </div>
@@ -459,7 +460,7 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
                 Membros do Grupo
               </span>
               <span className="text-xs font-bold text-primary">
-                {groupData?.participants ? groupData.participants.length : 0}
+                {groupData?.totalParticipantsCount || groupData?.participants?.length || 0}
               </span>
             </div>
 

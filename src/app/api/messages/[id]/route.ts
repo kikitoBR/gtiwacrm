@@ -72,9 +72,10 @@ export async function DELETE(
   const isAgent = msg.sender_type === 'agent' || msg.sender_type === 'bot'
   const deletedText = isAgent ? '🚫 Você apagou esta mensagem' : '🚫 Esta mensagem foi apagada'
 
+  // Soft delete by updating content_text (prevents PostgreSQL check constraint error on status)
   const { error } = await admin
     .from('messages')
-    .update({ content_text: deletedText, status: 'deleted' })
+    .update({ content_text: deletedText })
     .eq('id', id)
 
   if (error) {
@@ -149,9 +150,10 @@ export async function PATCH(
     }
   }
 
+  // Update content_text without violating PostgreSQL status constraint
   const { error } = await admin
     .from('messages')
-    .update({ content_text: newText.trim(), status: 'edited' })
+    .update({ content_text: newText.trim() })
     .eq('id', id)
 
   if (error) {

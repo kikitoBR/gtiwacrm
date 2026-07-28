@@ -265,15 +265,20 @@ export async function GET(request: Request) {
       phone: item.phone,
       name: item.name,
       avatar_url: item.avatar_url,
-      admin: item.admin,
     })
   }
+
+  const totalCount =
+    fullGroupInfo?.size ||
+    (Array.isArray(fullGroupInfo?.participants) ? fullGroupInfo.participants.length : 0) ||
+    deduplicatedParticipants.length;
 
   return NextResponse.json({
     subject: fullGroupInfo?.subject || null,
     description: fullGroupInfo?.description || null,
     pictureUrl: fullGroupInfo?.pictureUrl || null,
     owner: fullGroupInfo?.owner || null,
+    totalParticipantsCount: totalCount,
     participants: deduplicatedParticipants,
     media: mediaList,
     links: linksList,
