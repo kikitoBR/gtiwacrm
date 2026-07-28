@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import type { Contact, ContactNote, Tag } from "@/types";
@@ -20,6 +20,7 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,71 +66,81 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
   const [activeMediaTab, setActiveMediaTab] = useState<"media" | "links" | "docs">("media");
   const [showFullDesc, setShowFullDesc] = useState(false);
 
+  // Ref to track the current active contact ID to eliminate race conditions on fast switches
+  const activeContactIdRef = useRef<string | null>(contact?.id || null);
+
   const isGroup = Boolean(contact?.is_group || contact?.phone?.includes("@g.us"));
 
-  const fetchContactData = useCallback(async () => {
-    if (!contact) return;
+  useEffect(() => {
+    const targetContactId = contact?.id || null;
+    activeContactIdRef.current = targetContactId;
+
+    // Synchronously reset state on contact switch to avoid lag or showing old contact data
+    setHeaderAvatarError(false);
+    setFailedMemberAvatars({});
+    setNotes([]);
+    setTags([]);
+    setGroupData(null);
+    setMemberSearch("");
+    setShowFullDesc(false);
+
+    if (!contact || !targetContactId) return;
 
     const supabase = createClient();
 
-    // Fetch notes and tags in parallel
-    const [notesRes, tagsRes] = await Promise.all([
+    // Fetch notes and tags
+    Promise.all([
       supabase
         .from("contact_notes")
         .select("*")
-        .eq("contact_id", contact.id)
+        .eq("contact_id", targetContactId)
         .order("created_at", { ascending: false }),
       supabase
         .from("contact_tags")
         .select("id, tag_id, tags(*)")
-        .eq("contact_id", contact.id),
-    ]);
+        .eq("contact_id", targetContactId),
+    ]).then(([notesRes, tagsRes]) => {
+      if (activeContactIdRef.current !== targetContactId) return; // Discard stale response
+      if (notesRes.data) setNotes(notesRes.data);
+      if (tagsRes.data) {
+        const mapped = tagsRes.data
+          .filter((ct: Record<string, unknown>) => ct.tags)
+          .map((ct: Record<string, unknown>) => ({
+            ...(ct.tags as Tag),
+            contact_tag_id: ct.id as string,
+          }));
+        setTags(mapped);
+      }
+    });
 
-    if (notesRes.data) setNotes(notesRes.data);
-    if (tagsRes.data) {
-      const mapped = tagsRes.data
-        .filter((ct: Record<string, unknown>) => ct.tags)
-        .map((ct: Record<string, unknown>) => ({
-          ...(ct.tags as Tag),
-          contact_tag_id: ct.id as string,
-        }));
-      setTags(mapped);
-    }
-  }, [contact]);
-
-  const fetchGroupData = useCallback(async () => {
-    if (!contact || !isGroup) {
-      setGroupData(null);
-      return;
-    }
-    setLoadingGroup(true);
-    try {
+    // Fetch group details if group
+    if (isGroup) {
+      setLoadingGroup(true);
       const queryParams = new URLSearchParams();
-      queryParams.set("groupJid", contact.phone);
+      const rawPhone = contact.phone || "";
+      const groupJid = rawPhone.includes("@g.us")
+        ? rawPhone
+        : `${rawPhone.split("@")[0]}@g.us`;
+
+      queryParams.set("groupJid", groupJid);
       if (conversationId) queryParams.set("conversationId", conversationId);
 
-      const res = await fetch(`/api/whatsapp/group-info?${queryParams.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setGroupData(data);
-      }
-    } catch {
-      /* ignore fetch error */
-    } finally {
-      setLoadingGroup(false);
+      fetch(`/api/whatsapp/group-info?${queryParams.toString()}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (activeContactIdRef.current !== targetContactId) return; // Discard stale response
+          if (data) setGroupData(data);
+        })
+        .catch(() => {
+          /* ignore fetch error */
+        })
+        .finally(() => {
+          if (activeContactIdRef.current === targetContactId) {
+            setLoadingGroup(false);
+          }
+        });
     }
   }, [contact, conversationId, isGroup]);
-
-  useEffect(() => {
-    setHeaderAvatarError(false);
-    setFailedMemberAvatars({});
-    fetchContactData();
-    if (isGroup) {
-      fetchGroupData();
-    } else {
-      setGroupData(null);
-    }
-  }, [contact?.id, fetchContactData, fetchGroupData, isGroup]);
 
   const handleCopyPhone = useCallback(async () => {
     if (!contact?.phone) return;
@@ -186,16 +197,19 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
   }
 
   const displayName = isGroup
-    ? (groupData?.subject || contact.name || contact.phone)
-    : (contact.name || contact.phone);
+    ? groupData?.subject || contact.name || contact.phone
+    : contact.name || contact.phone;
   const initials = displayName ? displayName.charAt(0).toUpperCase() : "C";
   const avatarImage = isGroup
-    ? (groupData?.pictureUrl || contact.avatar_url)
+    ? groupData?.pictureUrl || contact.avatar_url
     : contact.avatar_url;
   const rawDigits = contact.phone ? contact.phone.replace(/\D/g, "") : "";
-  const displayPhone = rawDigits.length >= 8
-    ? (contact.phone.startsWith("+") ? contact.phone : `+${rawDigits}`)
-    : "Não informado";
+  const displayPhone =
+    rawDigits.length >= 8 && rawDigits.length <= 13
+      ? contact.phone.startsWith("+")
+        ? contact.phone
+        : `+${rawDigits}`
+      : "Não informado";
 
   return (
     <div className="flex h-full w-80 flex-col border-l border-border bg-card overflow-hidden">
@@ -239,7 +253,13 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
         {isGroup && groupData?.description && (
           <div className="rounded-xl border border-border bg-muted/40 p-3">
             <p className="text-xs font-semibold text-foreground mb-1">Descrição do grupo</p>
-            <p className={showFullDesc ? "text-xs text-muted-foreground whitespace-pre-wrap" : "text-xs text-muted-foreground line-clamp-3"}>
+            <p
+              className={
+                showFullDesc
+                  ? "text-xs text-muted-foreground whitespace-pre-wrap"
+                  : "text-xs text-muted-foreground line-clamp-3"
+              }
+            >
               {groupData.description}
             </p>
             {groupData.description.length > 100 && (
@@ -249,9 +269,13 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
                 className="mt-1 flex items-center gap-1 text-[11px] font-medium text-primary hover:underline cursor-pointer"
               >
                 {showFullDesc ? (
-                  <>Mostrar menos <ChevronUp className="h-3 w-3" /></>
+                  <>
+                    Mostrar menos <ChevronUp className="h-3 w-3" />
+                  </>
                 ) : (
-                  <>Ver descrição completa <ChevronDown className="h-3 w-3" /></>
+                  <>
+                    Ver descrição completa <ChevronDown className="h-3 w-3" />
+                  </>
                 )}
               </button>
             )}
@@ -263,12 +287,12 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
           <div className="space-y-2">
             <button
               onClick={handleCopyPhone}
-              disabled={rawDigits.length < 8}
+              disabled={rawDigits.length < 8 || rawDigits.length > 13}
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted disabled:opacity-70 disabled:cursor-not-allowed"
             >
               <Phone className="h-4 w-4 text-muted-foreground" />
               <span className="flex-1 text-left">{displayPhone}</span>
-              {rawDigits.length >= 8 && (
+              {rawDigits.length >= 8 && rawDigits.length <= 13 && (
                 copied ? (
                   <Check className="h-3.5 w-3.5 text-primary" />
                 ) : (
@@ -297,7 +321,9 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
                 Mídia, links e docs
               </span>
               <span className="text-xs font-bold text-primary">
-                {(groupData?.media?.length || 0) + (groupData?.links?.length || 0) + (groupData?.docs?.length || 0)}
+                {(groupData?.media?.length || 0) +
+                  (groupData?.links?.length || 0) +
+                  (groupData?.docs?.length || 0)}
               </span>
             </div>
 
@@ -345,7 +371,9 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
             {activeMediaTab === "media" && (
               <div>
                 {!groupData?.media || groupData.media.length === 0 ? (
-                  <p className="py-3 text-center text-xs text-muted-foreground">Nenhuma mídia compartilhada</p>
+                  <p className="py-3 text-center text-xs text-muted-foreground">
+                    Nenhuma mídia compartilhada
+                  </p>
                 ) : (
                   <div className="grid grid-cols-3 gap-1.5 max-h-48 overflow-y-auto pr-0.5">
                     {groupData.media.map((m) => (
@@ -374,7 +402,9 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
             {activeMediaTab === "links" && (
               <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                 {!groupData?.links || groupData.links.length === 0 ? (
-                  <p className="py-3 text-center text-xs text-muted-foreground">Nenhum link encontrado</p>
+                  <p className="py-3 text-center text-xs text-muted-foreground">
+                    Nenhum link encontrado
+                  </p>
                 ) : (
                   groupData.links.map((l) => (
                     <a
@@ -396,7 +426,9 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
             {activeMediaTab === "docs" && (
               <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                 {!groupData?.docs || groupData.docs.length === 0 ? (
-                  <p className="py-3 text-center text-xs text-muted-foreground">Nenhum documento encontrado</p>
+                  <p className="py-3 text-center text-xs text-muted-foreground">
+                    Nenhum documento encontrado
+                  </p>
                 ) : (
                   groupData.docs.map((d) => (
                     <a
@@ -445,23 +477,40 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
             {/* Members list */}
             <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
               {loadingGroup ? (
-                <p className="py-4 text-center text-xs text-muted-foreground">Carregando membros do grupo...</p>
+                <p className="py-4 text-center text-xs text-muted-foreground">
+                  Carregando membros do grupo...
+                </p>
               ) : filteredMembers.length === 0 ? (
-                <p className="py-4 text-center text-xs text-muted-foreground">Nenhum membro encontrado</p>
+                <p className="py-4 text-center text-xs text-muted-foreground">
+                  Nenhum membro encontrado
+                </p>
               ) : (
                 filteredMembers.map((member, idx) => {
                   const memberKey = member.phone || member.name || `mem-${idx}`;
                   const hasAvatarErr = failedMemberAvatars[memberKey];
-                  const displayMemberPhone = member.phone
-                    ? (member.phone.startsWith("+") ? member.phone : `+${member.phone}`)
+                  const hasValidPhone =
+                    member.phone && member.phone.length >= 8 && member.phone.length <= 13;
+                  const displayMemberPhone = hasValidPhone
+                    ? member.phone!.startsWith("+")
+                      ? member.phone
+                      : `+${member.phone}`
                     : null;
+
+                  const canOpenChat = Boolean(hasValidPhone && onNavigateToContact);
 
                   return (
                     <div
                       key={memberKey}
-                      onClick={() => member.phone && onNavigateToContact && onNavigateToContact(member.phone)}
-                      className={`flex items-center gap-2.5 rounded-lg p-2 transition-colors hover:bg-muted/70 ${
-                        member.phone ? "cursor-pointer group" : "cursor-default"
+                      onClick={() => {
+                        if (canOpenChat && member.phone) {
+                          onNavigateToContact!(member.phone);
+                        }
+                      }}
+                      title={canOpenChat ? `Abrir conversa direta com ${member.name}` : undefined}
+                      className={`flex items-center gap-2.5 rounded-lg p-2 transition-all ${
+                        canOpenChat
+                          ? "cursor-pointer hover:bg-primary/10 group"
+                          : "cursor-default hover:bg-muted/40"
                       }`}
                     >
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground overflow-hidden ring-1 ring-border">
@@ -471,7 +520,10 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
                             alt={member.name}
                             className="h-8 w-8 rounded-full object-cover"
                             onError={() =>
-                              setFailedMemberAvatars((prev) => ({ ...prev, [memberKey]: true }))
+                              setFailedMemberAvatars((prev) => ({
+                                ...prev,
+                                [memberKey]: true,
+                              }))
                             }
                           />
                         ) : (
@@ -483,11 +535,16 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
                           <p className="text-xs font-semibold text-foreground truncate group-hover:text-primary transition-colors">
                             {member.name}
                           </p>
-                          {member.admin && (
-                            <span className="rounded bg-primary/10 px-1 py-0.5 text-[9px] font-bold text-primary shrink-0">
-                              {member.admin === "superadmin" ? "Dono" : "Admin"}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-1 shrink-0">
+                            {member.admin && (
+                              <span className="rounded bg-primary/10 px-1 py-0.5 text-[9px] font-bold text-primary">
+                                {member.admin === "superadmin" ? "Dono" : "Admin"}
+                              </span>
+                            )}
+                            {canOpenChat && (
+                              <MessageSquare className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 group-hover:text-primary transition-opacity" />
+                            )}
+                          </div>
                         </div>
                         {displayMemberPhone && (
                           <p className="text-[11px] text-muted-foreground truncate">
@@ -561,10 +618,7 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
 
             <div className="mt-2 space-y-2">
               {notes.map((note) => (
-                <div
-                  key={note.id}
-                  className="rounded-lg bg-muted px-3 py-2"
-                >
+                <div key={note.id} className="rounded-lg bg-muted px-3 py-2">
                   <p className="whitespace-pre-wrap text-xs text-muted-foreground">
                     {note.note_text}
                   </p>

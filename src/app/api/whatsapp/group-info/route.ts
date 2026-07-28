@@ -85,8 +85,6 @@ export async function GET(request: Request) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let fullGroupInfo: any = null
-  const participantMap = new Map<string, { phone: string | null; name: string; avatar_url: string | null; admin?: string | null }>()
-
   if (config && jid) {
     try {
       const provider = getWhatsAppProvider(config)
@@ -94,26 +92,32 @@ export async function GET(request: Request) {
       const provAny = provider as any
       if (typeof provAny.getGroupInfo === 'function') {
         fullGroupInfo = await provAny.getGroupInfo(jid)
-        if (fullGroupInfo?.participants && Array.isArray(fullGroupInfo.participants)) {
-          for (const p of fullGroupInfo.participants) {
-            const key = p.phone || p.id
-            if (key && !participantMap.has(key)) {
-              participantMap.set(key, {
-                phone: p.phone || null,
-                name: p.name || (p.phone ? `+${p.phone}` : 'Membro do Grupo'),
-                avatar_url: p.avatar_url || null,
-                admin: p.admin || null,
-              })
-            }
-          }
-        }
       }
     } catch (e) {
       console.warn('[group-info] Provider fetch failed:', e)
     }
   }
 
-  // 3. Media, links, docs, and message-extracted participants from database
+  // 3. Collect participants from provider
+  const rawList: { phone: string | null; name: string; avatar_url: string | null; admin?: string | null }[] = []
+
+  if (fullGroupInfo?.participants && Array.isArray(fullGroupInfo.participants)) {
+    for (const p of fullGroupInfo.participants) {
+      const cleanPhone = p.phone ? p.phone.replace(/\D/g, '') : ''
+      // E.164 phone numbers have 8 to 13 digits (LIDs are 14+ digits)
+      const isRealPhone = cleanPhone.length >= 8 && cleanPhone.length <= 13
+      const phone = isRealPhone ? cleanPhone : null
+      const name = p.name && p.name !== 'Membro do Grupo' ? p.name : (phone ? `+${phone}` : 'Membro do Grupo')
+      rawList.push({
+        phone,
+        name,
+        avatar_url: p.avatar_url || null,
+        admin: p.admin || null,
+      })
+    }
+  }
+
+  // 4. Media, links, docs, and message-extracted senders from database
   const mediaList: { id: string; content_type: string; media_url: string; created_at: string }[] = []
   const linksList: { id: string; url: string; created_at: string }[] = []
   const docsList: { id: string; media_url: string; created_at: string }[] = []
@@ -162,19 +166,38 @@ export async function GET(request: Request) {
 
         if (m.content_text) {
           const { participantName, participantPhone } = parseGroupMessage(m.content_text)
-          const nameStr = participantName || (participantPhone ? `+${participantPhone}` : 'Membro do Grupo')
-          if (participantName || participantPhone) {
-            const key = participantPhone || nameStr
-            if (!participantMap.has(key)) {
-              participantMap.set(key, {
-                phone: participantPhone || null,
-                name: nameStr,
-                avatar_url: null,
-              })
+          if (participantName && participantName.trim()) {
+            const trimmedName = participantName.trim()
+            const cleanPhone = participantPhone ? participantPhone.replace(/\D/g, '') : ''
+            const isRealPhone = cleanPhone.length >= 8 && cleanPhone.length <= 13 ? cleanPhone : null
+
+            const existingByName = rawList.find(
+              (p) => p.name.toLowerCase() === trimmedName.toLowerCase()
+            )
+            const existingByPhone = isRealPhone
+              ? rawList.find((p) => p.phone === isRealPhone)
+              : null
+
+            if (existingByPhone) {
+              if (existingByPhone.name === 'Membro do Grupo' || existingByPhone.name.startsWith('+')) {
+                existingByPhone.name = trimmedName
+              }
+            } else if (existingByName) {
+              if (isRealPhone && !existingByName.phone) {
+                existingByName.phone = isRealPhone
+              }
             } else {
-              const existing = participantMap.get(key)!
-              if (participantName && (!existing.name || existing.name === 'Membro do Grupo' || existing.name.startsWith('+'))) {
-                existing.name = participantName
+              // Replace an unnamed LID entry if available
+              const unnamedLid = rawList.find((p) => p.name === 'Membro do Grupo')
+              if (unnamedLid) {
+                unnamedLid.name = trimmedName
+                if (isRealPhone) unnamedLid.phone = isRealPhone
+              } else {
+                rawList.push({
+                  phone: isRealPhone,
+                  name: trimmedName,
+                  avatar_url: null,
+                })
               }
             }
           }
@@ -196,37 +219,62 @@ export async function GET(request: Request) {
     }
   }
 
-  // 4. Enrich participants with saved contact names and avatars from `contacts` table
-  if (participantMap.size > 0) {
-    const phonesArr = Array.from(participantMap.keys())
-    const { data: contacts } = await admin
+  // 5. Enrich and match with `contacts` table in Supabase
+  if (accountId) {
+    const { data: dbContacts } = await admin
       .from('contacts')
       .select('phone, name, avatar_url')
       .eq('account_id', accountId)
-      .in('phone', phonesArr)
 
-    if (contacts) {
-      for (const c of contacts) {
-        if (c.phone && participantMap.has(c.phone)) {
-          const existing = participantMap.get(c.phone)!
-          participantMap.set(c.phone, {
-            ...existing,
-            name: c.name || existing.name,
-            avatar_url: c.avatar_url || existing.avatar_url,
-          })
+    if (dbContacts && dbContacts.length > 0) {
+      for (const c of dbContacts) {
+        if (!c.name) continue
+        const cCleanPhone = c.phone ? c.phone.replace(/\D/g, '') : ''
+
+        if (cCleanPhone && cCleanPhone.length <= 13) {
+          const matchByPhone = rawList.find((p) => p.phone === cCleanPhone)
+          if (matchByPhone) {
+            matchByPhone.name = c.name
+            matchByPhone.avatar_url = c.avatar_url || matchByPhone.avatar_url
+            continue
+          }
+        }
+
+        const matchByName = rawList.find(
+          (p) => p.name.toLowerCase() === c.name.toLowerCase()
+        )
+        if (matchByName) {
+          if (cCleanPhone && cCleanPhone.length <= 13 && !matchByName.phone) {
+            matchByName.phone = cCleanPhone
+          }
+          matchByName.avatar_url = c.avatar_url || matchByName.avatar_url
         }
       }
     }
   }
 
-  const finalParticipants = Array.from(participantMap.values())
+  // 6. Strict deduplication by phone or name
+  const deduplicatedParticipants: { phone: string | null; name: string; avatar_url: string | null; admin?: string | null }[] = []
+  const seenKeys = new Set<string>()
+
+  for (const item of rawList) {
+    const key = item.phone ? `phone:${item.phone}` : `name:${item.name.toLowerCase()}`
+    if (seenKeys.has(key)) continue
+    seenKeys.add(key)
+    deduplicatedParticipants.push({
+      phone: item.phone,
+      name: item.name,
+      avatar_url: item.avatar_url,
+      admin: item.admin,
+    })
+  }
 
   return NextResponse.json({
     subject: fullGroupInfo?.subject || null,
     description: fullGroupInfo?.description || null,
     pictureUrl: fullGroupInfo?.pictureUrl || null,
     owner: fullGroupInfo?.owner || null,
-    participants: finalParticipants,
+    participants: deduplicatedParticipants,
     media: mediaList,
     links: linksList,
     docs: docsList,
