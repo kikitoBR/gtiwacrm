@@ -875,7 +875,17 @@ export function MessageThread({
 
   const handleDeleteMessage = useCallback(
     async (messageId: string) => {
-      onMessagesLoaded(messages.filter((m) => m.id !== messageId));
+      const target = messages.find((m) => m.id === messageId);
+      const isAgent = target?.sender_type === "agent" || target?.sender_type === "bot";
+      const deletedText = isAgent ? "🚫 Você apagou esta mensagem" : "🚫 Esta mensagem foi apagada";
+
+      onMessagesLoaded(
+        messages.map((m) =>
+          m.id === messageId
+            ? { ...m, content_text: deletedText, status: "deleted" as const }
+            : m
+        )
+      );
       try {
         const res = await fetch(`/api/messages/${messageId}`, {
           method: "DELETE",
@@ -897,7 +907,11 @@ export function MessageThread({
   const handleEditMessage = useCallback(
     async (messageId: string, newText: string) => {
       onMessagesLoaded(
-        messages.map((m) => (m.id === messageId ? { ...m, content_text: newText } : m))
+        messages.map((m) =>
+          m.id === messageId
+            ? { ...m, content_text: newText, status: "edited" as const, is_edited: true }
+            : m
+        )
       );
       try {
         const res = await fetch(`/api/messages/${messageId}`, {

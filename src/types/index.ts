@@ -219,7 +219,7 @@ export type ContentType =
   | 'template'
   /** Customer tapped a reply button or list row on a message we sent. */
   | 'interactive';
-export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed' | 'edited' | 'deleted';
 
 export interface Message {
   id: string;
@@ -232,6 +232,7 @@ export interface Message {
   template_name?: string;
   message_id?: string;
   status: MessageStatus;
+  is_edited?: boolean;
   created_at: string;
   reply_to_message_id?: string;
   /**

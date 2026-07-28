@@ -69,7 +69,14 @@ export async function DELETE(
     }
   }
 
-  const { error } = await admin.from('messages').delete().eq('id', id)
+  const isAgent = msg.sender_type === 'agent' || msg.sender_type === 'bot'
+  const deletedText = isAgent ? '🚫 Você apagou esta mensagem' : '🚫 Esta mensagem foi apagada'
+
+  const { error } = await admin
+    .from('messages')
+    .update({ content_text: deletedText, status: 'deleted' })
+    .eq('id', id)
+
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
@@ -144,7 +151,7 @@ export async function PATCH(
 
   const { error } = await admin
     .from('messages')
-    .update({ content_text: newText.trim() })
+    .update({ content_text: newText.trim(), status: 'edited' })
     .eq('id', id)
 
   if (error) {

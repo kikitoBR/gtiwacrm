@@ -94,6 +94,25 @@ export async function POST(request: Request) {
       targetMessage = data;
     }
 
+    // Secondary fallback: query with user session client in case admin client env vars are unpopulated
+    if (!targetMessage && isUuid) {
+      const { data } = await supabase
+        .from('messages')
+        .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
+        .eq('id', message_id)
+        .maybeSingle();
+      targetMessage = data;
+    }
+
+    if (!targetMessage) {
+      const { data } = await supabase
+        .from('messages')
+        .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
+        .eq('whatsapp_message_id', message_id)
+        .maybeSingle();
+      targetMessage = data;
+    }
+
     if (!targetMessage) {
       return NextResponse.json({ error: 'Message not found' }, { status: 404 });
     }

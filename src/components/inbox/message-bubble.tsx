@@ -14,6 +14,7 @@ import {
   ImageOff,
   CornerDownLeft,
   Sparkles,
+  Ban,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -318,6 +319,9 @@ export function MessageBubble({
     }
   };
 
+  const isDeleted = message.status === "deleted" || message.content_text?.startsWith("🚫");
+  const isEdited = message.is_edited || message.status === "edited";
+
   return (
     <div
       className={cn(
@@ -353,12 +357,14 @@ export function MessageBubble({
         <div
           className={cn(
             "relative rounded-2xl px-3 py-2 min-w-0 max-w-full",
-            isAgent
+            isDeleted
+              ? "rounded-2xl bg-muted/40 text-muted-foreground border border-muted-foreground/20 italic"
+              : isAgent
               ? "rounded-br-md bg-primary text-primary-foreground"
               : "rounded-bl-md bg-muted text-foreground",
           )}
         >
-          {isGroup && !isAgent && participantName && (
+          {isGroup && !isAgent && participantName && !isDeleted && (
             <div
               className="mb-1 text-xs font-semibold cursor-pointer hover:underline select-none"
               style={{ color: participantColor || "#0284c7" }}
@@ -367,25 +373,31 @@ export function MessageBubble({
               ~ {participantName}
             </div>
           )}
-          {reply && (
+          {reply && !isDeleted && (
             <ReplyQuote
               authorLabel={reply.authorLabel}
               preview={reply.preview}
               onPrimary={isAgent}
             />
           )}
-          <MessageContent message={displayMessage} t={t} />
+          {isDeleted ? (
+            <div className="flex items-center gap-1.5 py-0.5 text-xs italic opacity-85 select-none">
+              <Ban className="h-3.5 w-3.5 shrink-0 opacity-75" />
+              <span>
+                {isAgent ? "Você apagou esta mensagem" : "Esta mensagem foi apagada"}
+              </span>
+            </div>
+          ) : (
+            <MessageContent message={displayMessage} t={t} />
+          )}
           <div
             className={cn(
               "mt-1 flex items-center gap-1",
               isAgent ? "justify-end" : "justify-start",
             )}
           >
-            {/* AI badge — only on replies the auto-reply bot generated
-                (always outbound, so it sits on the primary fill). Lets
-                agents tell an AI reply from their own / a Flow's at a
-                glance. */}
-            {message.ai_generated && (
+            {/* AI badge */}
+            {message.ai_generated && !isDeleted && (
               <span
                 className="inline-flex items-center gap-0.5 rounded-full bg-primary-foreground/20 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-primary-foreground"
                 title={t("aiBadgeTitle")}
@@ -397,19 +409,18 @@ export function MessageBubble({
             <span
               className={cn(
                 "text-[10px]",
-                // Outbound bubbles sit on the primary fill, so the
-                // timestamp must read against that (not the neutral
-                // foreground) — otherwise it goes low-contrast in light
-                // mode. Inbound bubbles use the muted surface.
-                isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
+                isAgent && !isDeleted ? "text-primary-foreground/70" : "text-muted-foreground",
               )}
             >
               {time}
+              {isEdited && !isDeleted && (
+                <span className="ml-1 font-normal opacity-85">• Editada</span>
+              )}
             </span>
-            {isAgent && <StatusIcon status={message.status} />}
+            {isAgent && !isDeleted && <StatusIcon status={message.status} />}
           </div>
         </div>
-        {reactions && reactions.length > 0 && onToggleReaction && (
+        {reactions && reactions.length > 0 && onToggleReaction && !isDeleted && (
           <MessageReactions
             reactions={reactions}
             currentUserId={currentUserId}
