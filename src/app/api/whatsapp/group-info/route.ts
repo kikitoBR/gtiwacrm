@@ -96,10 +96,11 @@ export async function GET(request: Request) {
         fullGroupInfo = await provAny.getGroupInfo(jid)
         if (fullGroupInfo?.participants && Array.isArray(fullGroupInfo.participants)) {
           for (const p of fullGroupInfo.participants) {
-            if (p.phone && p.phone.length >= 8 && p.phone.length <= 13) {
-              participantMap.set(p.phone, {
-                phone: p.phone,
-                name: p.name || `+${p.phone}`,
+            const key = p.phone || p.id
+            if (key && !participantMap.has(key)) {
+              participantMap.set(key, {
+                phone: p.phone || null,
+                name: p.name || (p.phone ? `+${p.phone}` : 'Membro do Grupo'),
                 avatar_url: p.avatar_url || null,
                 admin: p.admin || null,
               })

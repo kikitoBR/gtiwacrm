@@ -499,6 +499,27 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     return null
   }
 
+  private extractParticipantsFromApiData(data: unknown): any[] {
+    if (!data) return []
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        const found = this.extractParticipantsFromApiData(item)
+        if (found.length > 0) return found
+      }
+      return []
+    }
+    if (typeof data === 'object' && data !== null) {
+      const obj = data as Record<string, any>
+      if (Array.isArray(obj.participants)) return obj.participants
+      if (Array.isArray(obj.members)) return obj.members
+      if (Array.isArray(obj.groupMetadata?.participants)) return obj.groupMetadata.participants
+      if (Array.isArray(obj.data?.participants)) return obj.data.participants
+      if (Array.isArray(obj.data?.members)) return obj.data.members
+      if (Array.isArray(obj.response?.participants)) return obj.response.participants
+    }
+    return []
+  }
+
   async getGroupInfo(groupJid: string): Promise<{
     subject?: string
     description?: string
@@ -513,37 +534,47 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     }>
   } | null> {
     try {
+      const cleanJid = groupJid.trim()
+      const formattedGroupJid = cleanJid.includes('@g.us')
+        ? cleanJid
+        : `${cleanJid.split('@')[0]}@g.us`
+
       let data: Record<string, unknown> | null = null
       try {
-        data = await this.request('/group/findGroupInfos', { groupJid }, 'GET')
+        data = await this.request('/group/findGroupInfos', { groupJid: formattedGroupJid }, 'GET')
       } catch {
         try {
-          data = await this.request('/group/findGroupInfos', { groupJid }, 'POST')
+          data = await this.request('/group/findGroupInfos', { groupJid: formattedGroupJid }, 'POST')
         } catch {
           try {
-            data = await this.request('/group/participants', { groupJid }, 'GET')
+            data = await this.request('/group/participants', { groupJid: formattedGroupJid }, 'GET')
           } catch {
-            const groups = (await this.request('/group/fetchAllGroups', { getParticipants: true }, 'GET')) as unknown as Array<{
-              id?: string
-              subject?: string
-              name?: string
-              pictureUrl?: string
-              participants?: unknown[]
-            }>
-            if (Array.isArray(groups)) {
-              data = (groups.find((g) => g.id === groupJid) as Record<string, unknown>) || null
+            try {
+              data = await this.request('/group/participants', { groupJid: formattedGroupJid }, 'POST')
+            } catch {
+              const groups = (await this.request('/group/fetchAllGroups', { getParticipants: true }, 'GET')) as unknown as Array<{
+                id?: string
+                subject?: string
+                name?: string
+                pictureUrl?: string
+                participants?: unknown[]
+              }>
+              if (Array.isArray(groups)) {
+                data = (groups.find((g) => g.id === formattedGroupJid || g.id === cleanJid) as Record<string, unknown>) || null
+              }
             }
           }
         }
       }
 
-      const subject = (data?.subject as string) || (data?.name as string) || (data?.groupSubject as string) || undefined
-      const description = (data?.description as string) || (data?.desc as string) || (typeof data?.desc === 'object' ? (data?.desc as { text?: string })?.text : undefined) || undefined
-      const pictureUrl = (data?.pictureUrl as string) || (data?.profilePictureUrl as string) || (data?.url as string) || undefined
-      const owner = typeof data?.owner === 'string' ? this.cleanJidToDigits(data.owner) : undefined
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rawParticipants = (data?.participants || data?.members) as any[]
+      const resObj = (data?.data || data?.response || data) as any
+      const subject = (resObj?.subject as string) || (resObj?.name as string) || (resObj?.groupSubject as string) || undefined
+      const description = (resObj?.description as string) || (resObj?.desc as string) || (typeof resObj?.desc === 'object' ? (resObj?.desc as { text?: string })?.text : undefined) || undefined
+      const pictureUrl = (resObj?.pictureUrl as string) || (resObj?.profilePictureUrl as string) || (resObj?.url as string) || undefined
+      const owner = typeof resObj?.owner === 'string' ? this.cleanJidToDigits(resObj.owner) : undefined
+
+      const rawParticipants = this.extractParticipantsFromApiData(data)
       const parsedParticipants: Array<{
         id: string
         phone: string | null

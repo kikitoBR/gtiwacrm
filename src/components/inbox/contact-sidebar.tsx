@@ -168,11 +168,11 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
     if (!groupData?.participants) return [];
     if (!memberSearch.trim()) return groupData.participants;
     const term = memberSearch.toLowerCase();
-    return groupData.participants.filter(
-      (m) =>
-        m.name.toLowerCase().includes(term) ||
-        (m.phone && m.phone.includes(term))
-    );
+    return groupData.participants.filter((m) => {
+      const nameMatch = m.name ? m.name.toLowerCase().includes(term) : false;
+      const phoneMatch = m.phone ? m.phone.includes(term) : false;
+      return nameMatch || phoneMatch;
+    });
   }, [groupData?.participants, memberSearch]);
 
   if (!contact) {
