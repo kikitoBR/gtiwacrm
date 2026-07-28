@@ -284,9 +284,11 @@ export async function POST(request: Request) {
         const pRaw = item.participant || key.participant || ''
         let pPhone = pRaw ? pRaw.split('@')[0].split(':')[0].replace(/\D/g, '') : ''
         const pName = item.pushName || (pPhone ? `+${pPhone}` : 'Participant')
+        let isLidUnresolved = false
 
         // Resolve LID JIDs (e.g. 22523093737506@lid) to real WhatsApp phone numbers
         if (pPhone && (pRaw.includes('@lid') || pPhone.length > 13)) {
+          let resolved = false
           try {
             const provider = getWhatsAppProvider(config)
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -294,16 +296,22 @@ export async function POST(request: Request) {
             if (typeof provAny.getGroupParticipantsMap === 'function') {
               const partMap = await provAny.getGroupParticipantsMap(key.remoteJid)
               const mapped = partMap.get(pPhone)
-              if (mapped?.phone) {
+              if (mapped?.phone && mapped.phone !== pPhone) {
                 pPhone = mapped.phone
+                resolved = true
               }
             }
           } catch {
             /* ignore group map fetch error */
           }
+          if (!resolved) {
+            isLidUnresolved = true
+            console.warn(`[webhook/evolution] LID not resolved for participant ${pRaw} in group ${key.remoteJid}; using pushName only`)
+          }
         }
 
-        if (pPhone && pPhone !== senderPhone) {
+        // Only create/update contact with a real phone (skip unresolved LIDs)
+        if (pPhone && pPhone !== senderPhone && !isLidUnresolved) {
           void findOrCreateContact(
             config.account_id,
             config.user_id,
@@ -342,8 +350,11 @@ export async function POST(request: Request) {
           }).catch(() => {})
         }
 
+        // Embed participant info in message text.
+        // Only include phone when it's a real phone (not an unresolved LID).
         if (pName && contentText) {
-          contentText = pPhone ? `*${pName}|${pPhone}:* ${contentText}` : `*${pName}:* ${contentText}`
+          const displayPhone = (!isLidUnresolved && pPhone && pPhone !== senderPhone) ? pPhone : null
+          contentText = displayPhone ? `*${pName}|${displayPhone}:* ${contentText}` : `*${pName}:* ${contentText}`
         }
       }
 

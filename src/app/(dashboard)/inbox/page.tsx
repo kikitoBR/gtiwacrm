@@ -277,7 +277,9 @@ function InboxPageInner() {
           const targetConv = conversations.find((c) => c.id === newMsg.conversation_id);
           const senderName =
             targetConv?.contact?.name || targetConv?.contact?.phone || "Nova mensagem";
+          const senderAvatar = targetConv?.contact?.avatar_url || null;
           const snippetText = newMsg.content_text || "Mensagem recebida no WhatsApp";
+          const nowTime = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
           // Desktop notification if tab in background
           if (
@@ -288,11 +290,11 @@ function InboxPageInner() {
           ) {
             new Notification(senderName, {
               body: snippetText,
-              icon: "/gti-logo-white.png",
+              icon: senderAvatar || "/gti-logo-white.png",
             });
           }
 
-          // Visual Sonner toast notification
+          // Visual Sonner toast notification — Glassmorphism card
           toast.custom(
             (tId) => (
               <div
@@ -300,21 +302,44 @@ function InboxPageInner() {
                   if (targetConv) setActiveConversation(targetConv);
                   toast.dismiss(tId);
                 }}
-                className="flex items-center gap-3 rounded-xl border border-primary/30 bg-popover/95 p-3.5 shadow-2xl backdrop-blur-md cursor-pointer hover:border-primary transition-all duration-200"
+                style={{
+                  background: "rgba(var(--popover-rgb, 30 30 30) / 0.72)",
+                  backdropFilter: "blur(24px) saturate(1.6)",
+                  WebkitBackdropFilter: "blur(24px) saturate(1.6)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  boxShadow: "0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06)",
+                }}
+                className="flex items-center gap-3.5 rounded-2xl px-4 py-3.5 min-w-[340px] max-w-[420px] cursor-pointer transition-all duration-300 hover:scale-[1.01] hover:shadow-[0_12px_40px_rgba(0,0,0,0.45)] animate-in slide-in-from-right-5 fade-in duration-300"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">
-                  {senderName.charAt(0).toUpperCase()}
+                {/* Avatar */}
+                <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden shadow-lg ring-2 ring-white/10">
+                  {senderAvatar ? (
+                    <img
+                      src={senderAvatar}
+                      alt={senderName}
+                      className="h-12 w-12 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="flex h-12 w-12 items-center justify-center rounded-full text-white font-bold text-base"
+                      style={{ background: "linear-gradient(135deg, hsl(142 72% 42%), hsl(142 72% 32%))" }}
+                    >
+                      {senderName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
                 </div>
+
+                {/* Content */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-bold text-foreground truncate">{senderName}</p>
-                    <span className="text-[10px] text-primary font-medium">WhatsApp</span>
+                  <div className="flex items-center justify-between gap-2 mb-0.5">
+                    <p className="text-sm font-bold text-white truncate">{senderName}</p>
+                    <span className="text-[11px] text-white/50 font-medium shrink-0">{nowTime}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">{snippetText}</p>
+                  <p className="text-[13px] text-white/70 line-clamp-2 leading-snug">{snippetText}</p>
                 </div>
               </div>
             ),
-            { duration: 4500 }
+            { duration: 5000, unstyled: true }
           );
         }
 

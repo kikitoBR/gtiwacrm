@@ -761,21 +761,28 @@ export function MessageThread({
   useEffect(() => {
     if (!isGroupChat || messages.length === 0) return;
     const names = new Set<string>();
+    const phones = new Set<string>();
     for (const m of messages) {
       if (m.sender_type === "customer" && m.content_text) {
-        const { participantName } = parseGroupMessage(m.content_text);
+        const { participantName, participantPhone } = parseGroupMessage(m.content_text);
         if (participantName) names.add(participantName);
+        if (participantPhone) phones.add(participantPhone);
       }
     }
-    if (names.size === 0) return;
+    if (names.size === 0 && phones.size === 0) return;
 
     const supabase = createClient();
     let cancelled = false;
     (async () => {
+      // Query contacts matching by name or phone
+      const orFilters: string[] = [];
+      if (names.size > 0) orFilters.push(`name.in.(${Array.from(names).map(n => `"${n}"`).join(",")})`);
+      if (phones.size > 0) orFilters.push(`phone.in.(${Array.from(phones).join(",")})`);
+
       const { data } = await supabase
         .from("contacts")
         .select("*")
-        .in("name", Array.from(names));
+        .or(orFilters.join(","));
       if (!cancelled && data) {
         const map = new Map<string, Contact>();
         for (const c of data as Contact[]) {
@@ -1180,11 +1187,13 @@ export function MessageThread({
                       const next = own?.emoji === emoji ? "" : emoji;
                       void postReaction(msg.id, next);
                     };
-                    const { participantName } = isGroup && msg.sender_type === "customer"
+                    const { participantName, participantPhone: pPhone } = isGroup && msg.sender_type === "customer"
                       ? parseGroupMessage(msg.content_text)
-                      : { participantName: null };
+                      : { participantName: null, participantPhone: null };
                     const participantContact = participantName
-                      ? participantsMap.get(participantName.toLowerCase()) ?? null
+                      ? (participantsMap.get(participantName.toLowerCase())
+                         ?? (pPhone ? participantsMap.get(pPhone.toLowerCase()) : null)
+                         ?? null)
                       : null;
 
                     return (

@@ -38,7 +38,7 @@ export function ThemedToaster() {
   return (
     <Toaster
       theme={isClient ? mode : DEFAULT_MODE}
-      position="top-right"
+      position="bottom-right"
       toastOptions={{
         style: {
           background: "var(--popover)",
