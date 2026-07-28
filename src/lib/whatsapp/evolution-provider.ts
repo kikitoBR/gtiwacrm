@@ -702,6 +702,33 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     }
   }
 
+  async syncContacts(): Promise<Array<{ id: string; name?: string; pushName?: string; pictureUrl?: string }>> {
+    try {
+      let data: unknown = null
+      try {
+        data = await this.request('/chat/findContacts', {}, 'POST')
+      } catch {
+        try {
+          data = await this.request('/chat/findContacts', {}, 'GET')
+        } catch {
+          data = await this.request('/chat/findContacts', { where: {} }, 'POST')
+        }
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const list = (Array.isArray(data) ? data : (data as any)?.data || (data as any)?.contacts || []) as any[]
+      return list.map((item) => {
+        const rawId = typeof item === 'string' ? item : item?.id || item?.jid || item?.number || ''
+        const name = typeof item === 'object' ? (item?.name || item?.pushName || item?.formattedName) : undefined
+        const pictureUrl = typeof item === 'object' ? (item?.profilePicUrl || item?.pictureUrl || item?.profilePictureUrl) : undefined
+        return { id: rawId, name, pushName: typeof item === 'object' ? item?.pushName : undefined, pictureUrl }
+      })
+    } catch (err) {
+      console.warn('[Evolution API] syncContacts failed:', err)
+      return []
+    }
+  }
+
   private formatPhone(phone: string): string {
     if (phone.includes('@g.us')) return phone
     // A Evolution API geralmente prefere números formatados apenas com números sem '+' ou '@s.whatsapp.net'
