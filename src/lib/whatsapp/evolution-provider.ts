@@ -448,7 +448,70 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     }
   }
 
-  async getGroupInfo(groupJid: string): Promise<{ subject?: string; description?: string; pictureUrl?: string } | null> {
+  private lidCache = new Map<string, { phone: string; name?: string; picture?: string }>()
+
+  public cleanJidToDigits(jid: string): string {
+    if (!jid) return ''
+    const withoutDevice = jid.split(':')[0]
+    const withoutDomain = withoutDevice.split('@')[0]
+    return withoutDomain.replace(/[^0-9]/g, '')
+  }
+
+  public async resolveLidToPhone(
+    lidJid: string
+  ): Promise<{ phone: string; name?: string; picture?: string } | null> {
+    if (!lidJid) return null
+    const cleanedLid = this.cleanJidToDigits(lidJid)
+    if (!cleanedLid) return null
+
+    if (this.lidCache.has(cleanedLid)) {
+      return this.lidCache.get(cleanedLid)!
+    }
+
+    try {
+      let data: Record<string, unknown> | null = null
+      try {
+        data = await this.request('/chat/fetchProfile', { number: lidJid }, 'POST')
+      } catch {
+        try {
+          data = await this.request('/chat/fetchProfile', { number: lidJid }, 'GET')
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (data) {
+        const rawPhone = (data.number as string) || (data.phone as string) || this.cleanJidToDigits(data.id as string)
+        const phone = rawPhone ? this.cleanJidToDigits(rawPhone) : ''
+        const name = (data.name as string) || (data.pushName as string) || (data.formattedName as string) || undefined
+        const picture = (data.picture as string) || (data.profilePictureUrl as string) || (data.profilePicUrl as string) || undefined
+
+        if (phone && phone !== cleanedLid && phone.length >= 8 && phone.length <= 13) {
+          const result = { phone, name, picture }
+          this.lidCache.set(cleanedLid, result)
+          return result
+        }
+      }
+    } catch (err) {
+      console.warn(`[evolution-provider] Failed to resolve LID ${lidJid}:`, err)
+    }
+
+    return null
+  }
+
+  async getGroupInfo(groupJid: string): Promise<{
+    subject?: string
+    description?: string
+    pictureUrl?: string
+    owner?: string
+    participants?: Array<{
+      id: string
+      phone: string | null
+      name?: string
+      avatar_url?: string | null
+      admin?: 'superadmin' | 'admin' | null
+    }>
+  } | null> {
     try {
       let data: Record<string, unknown> | null = null
       try {
@@ -457,22 +520,97 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
         try {
           data = await this.request('/group/findGroupInfos', { groupJid }, 'POST')
         } catch {
-          // Fallback to fetchAllGroups
-          const groups = (await this.request('/group/fetchAllGroups', { getParticipants: false }, 'GET')) as unknown as Array<{
-            id?: string
-            subject?: string
-            name?: string
-            pictureUrl?: string
-          }>
-          if (Array.isArray(groups)) {
-            data = (groups.find((g) => g.id === groupJid) as Record<string, unknown>) || null
+          try {
+            data = await this.request('/group/participants', { groupJid }, 'GET')
+          } catch {
+            const groups = (await this.request('/group/fetchAllGroups', { getParticipants: true }, 'GET')) as unknown as Array<{
+              id?: string
+              subject?: string
+              name?: string
+              pictureUrl?: string
+              participants?: unknown[]
+            }>
+            if (Array.isArray(groups)) {
+              data = (groups.find((g) => g.id === groupJid) as Record<string, unknown>) || null
+            }
           }
         }
       }
+
+      const subject = (data?.subject as string) || (data?.name as string) || (data?.groupSubject as string) || undefined
+      const description = (data?.description as string) || (data?.desc as string) || (typeof data?.desc === 'object' ? (data?.desc as { text?: string })?.text : undefined) || undefined
+      const pictureUrl = (data?.pictureUrl as string) || (data?.profilePictureUrl as string) || (data?.url as string) || undefined
+      const owner = typeof data?.owner === 'string' ? this.cleanJidToDigits(data.owner) : undefined
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rawParticipants = (data?.participants || data?.members) as any[]
+      const parsedParticipants: Array<{
+        id: string
+        phone: string | null
+        name?: string
+        avatar_url?: string | null
+        admin?: 'superadmin' | 'admin' | null
+      }> = []
+
+      if (Array.isArray(rawParticipants) && rawParticipants.length > 0) {
+        // Resolve participants in concurrent chunks of 15
+        const CHUNK_SIZE = 15
+        for (let i = 0; i < rawParticipants.length; i += CHUNK_SIZE) {
+          const chunk = rawParticipants.slice(i, i + CHUNK_SIZE)
+          const resolvedChunk = await Promise.all(
+            chunk.map(async (p) => {
+              const rawId = typeof p === 'string' ? p : p?.id || p?.jid || p?.number || ''
+              const rawLid = typeof p === 'object' ? p?.lid || '' : ''
+              const admin = typeof p === 'object' ? (p?.admin || p?.role || null) : null
+
+              if (!rawId && !rawLid) return null
+
+              const targetJid = rawLid || rawId
+              const isLid = targetJid.includes('@lid') || this.cleanJidToDigits(targetJid).length > 13
+
+              if (isLid) {
+                const resolved = await this.resolveLidToPhone(targetJid)
+                if (resolved) {
+                  return {
+                    id: targetJid,
+                    phone: resolved.phone,
+                    name: resolved.name,
+                    avatar_url: resolved.picture,
+                    admin,
+                  }
+                }
+                return {
+                  id: targetJid,
+                  phone: null,
+                  admin,
+                }
+              }
+
+              const cleanPhone = this.cleanJidToDigits(rawId)
+              if (cleanPhone && cleanPhone.length >= 8 && cleanPhone.length <= 13) {
+                return {
+                  id: rawId,
+                  phone: cleanPhone,
+                  admin,
+                }
+              }
+
+              return null
+            })
+          )
+
+          for (const item of resolvedChunk) {
+            if (item) parsedParticipants.push(item)
+          }
+        }
+      }
+
       return {
-        subject: (data?.subject as string) || (data?.name as string) || (data?.groupSubject as string) || undefined,
-        description: (data?.description as string) || (data?.desc as string) || (typeof data?.desc === 'object' ? (data?.desc as { text?: string })?.text : undefined) || undefined,
-        pictureUrl: (data?.pictureUrl as string) || (data?.profilePictureUrl as string) || (data?.url as string) || undefined,
+        subject,
+        description,
+        pictureUrl,
+        owner,
+        participants: parsedParticipants,
       }
     } catch {
       return null
@@ -482,33 +620,11 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
   async getGroupParticipantsMap(groupJid: string): Promise<Map<string, { phone: string; lid?: string }>> {
     const map = new Map<string, { phone: string; lid?: string }>()
     try {
-      let data: Record<string, unknown> | null = null
-      try {
-        data = await this.request('/group/findGroupInfos', { groupJid }, 'GET')
-      } catch {
-        try {
-          data = await this.request('/group/findGroupInfos', { groupJid }, 'POST')
-        } catch {
-          /* ignore */
-        }
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const participants = (data?.participants || data?.members) as any[]
-      if (Array.isArray(participants)) {
-        for (const p of participants) {
-          const rawId = typeof p === 'string' ? p : p?.id || p?.jid || ''
-          const rawLid = typeof p === 'object' ? p?.lid || '' : ''
-          const phone = rawId.split('@')[0].split(':')[0]
-          const cleanPhone = phone.replace(/\D/g, '')
-          if (cleanPhone) {
-            map.set(cleanPhone, { phone: cleanPhone, lid: rawLid })
-            if (rawLid) {
-              const cleanLid = rawLid.split('@')[0].split(':')[0].replace(/\D/g, '')
-              if (cleanLid) {
-                map.set(cleanLid, { phone: cleanPhone, lid: cleanLid })
-              }
-            }
+      const info = await this.getGroupInfo(groupJid)
+      if (info?.participants) {
+        for (const p of info.participants) {
+          if (p.phone) {
+            map.set(p.phone, { phone: p.phone, lid: p.id.includes('@lid') ? p.id : undefined })
           }
         }
       }

@@ -42,10 +42,10 @@ export async function GET(request: Request) {
 
   const admin = supabaseAdmin()
 
-  // 1. Get conversation and contact if conversationId provided
   let convId = conversationId
   let jid = groupJid
 
+  // 1. Resolve conversationId and groupJid
   if (convId && !jid) {
     const { data: conv } = await admin
       .from('conversations')
@@ -57,25 +57,35 @@ export async function GET(request: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     jid = (conv?.contact as any)?.phone || null
   } else if (jid && !convId) {
-    const { data: conv } = await admin
-      .from('conversations')
-      .select('id, contact:contacts(phone)')
+    const { data: contactRec } = await admin
+      .from('contacts')
+      .select('id')
       .eq('account_id', accountId)
-      .filter('contact.phone', 'eq', jid)
+      .eq('phone', jid)
       .maybeSingle()
 
-    convId = conv?.id || null
+    if (contactRec) {
+      const { data: conv } = await admin
+        .from('conversations')
+        .select('id')
+        .eq('account_id', accountId)
+        .eq('contact_id', contactRec.id)
+        .maybeSingle()
+
+      convId = conv?.id || null
+    }
   }
 
-  // 2. Fetch provider info if available
+  // 2. Query provider for group metadata and full participants list
   const { data: config } = await admin
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', accountId)
     .maybeSingle()
 
-  let groupInfo: { subject?: string; description?: string; pictureUrl?: string } | null = null
-  const participantPhones = new Set<string>()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let fullGroupInfo: any = null
+  const participantMap = new Map<string, { phone: string; name: string; avatar_url: string | null; admin?: string | null }>()
 
   if (config && jid) {
     try {
@@ -83,22 +93,26 @@ export async function GET(request: Request) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const provAny = provider as any
       if (typeof provAny.getGroupInfo === 'function') {
-        groupInfo = await provAny.getGroupInfo(jid)
-      }
-      if (typeof provAny.getGroupParticipantsMap === 'function') {
-        const partMap = await provAny.getGroupParticipantsMap(jid)
-        for (const item of partMap.values()) {
-          if (item.phone && item.phone.length <= 13) {
-            participantPhones.add(item.phone)
+        fullGroupInfo = await provAny.getGroupInfo(jid)
+        if (fullGroupInfo?.participants && Array.isArray(fullGroupInfo.participants)) {
+          for (const p of fullGroupInfo.participants) {
+            if (p.phone && p.phone.length >= 8 && p.phone.length <= 13) {
+              participantMap.set(p.phone, {
+                phone: p.phone,
+                name: p.name || `+${p.phone}`,
+                avatar_url: p.avatar_url || null,
+                admin: p.admin || null,
+              })
+            }
           }
         }
       }
     } catch (e) {
-      console.warn('[group-info] Provider group fetch failed:', e)
+      console.warn('[group-info] Provider fetch failed:', e)
     }
   }
 
-  // 3. Media, links, docs, and message-extracted participants
+  // 3. Media, links, docs, and message-extracted participants from database
   const mediaList: { id: string; content_type: string; media_url: string; created_at: string }[] = []
   const linksList: { id: string; url: string; created_at: string }[] = []
   const docsList: { id: string; media_url: string; created_at: string }[] = []
@@ -109,12 +123,12 @@ export async function GET(request: Request) {
       .select('id, content_type, content_text, media_url, created_at')
       .eq('conversation_id', convId)
       .order('created_at', { ascending: false })
-      .limit(300)
+      .limit(500)
 
     if (msgs) {
       const urlRegex = /(https?:\/\/[^\s]+)/g
       for (const m of msgs) {
-        if ((m.content_type === 'image' || m.content_type === 'video') && m.media_url) {
+        if ((m.content_type === 'image' || m.content_type === 'video' || m.content_type === 'audio') && m.media_url) {
           mediaList.push({
             id: m.id,
             content_type: m.content_type,
@@ -127,13 +141,36 @@ export async function GET(request: Request) {
             media_url: m.media_url,
             created_at: m.created_at,
           })
+        } else if (m.media_url && !mediaList.some((item) => item.id === m.id)) {
+          const lower = m.media_url.toLowerCase()
+          if (lower.match(/\.(png|jpe?g|gif|webp|mp4|mov|webm|mp3|ogg|wav)$/)) {
+            mediaList.push({
+              id: m.id,
+              content_type: m.content_type || 'image',
+              media_url: m.media_url,
+              created_at: m.created_at,
+            })
+          } else if (lower.match(/\.(pdf|docx?|xlsx?|pptx?|zip|rar|txt)$/)) {
+            docsList.push({
+              id: m.id,
+              media_url: m.media_url,
+              created_at: m.created_at,
+            })
+          }
         }
 
         if (m.content_text) {
           const { participantName, participantPhone } = parseGroupMessage(m.content_text)
-          if (participantPhone && participantPhone.length <= 13) {
-            participantPhones.add(participantPhone)
+          if (participantPhone && participantPhone.length >= 8 && participantPhone.length <= 13) {
+            if (!participantMap.has(participantPhone)) {
+              participantMap.set(participantPhone, {
+                phone: participantPhone,
+                name: participantName || `+${participantPhone}`,
+                avatar_url: null,
+              })
+            }
           }
+
           const matches = m.content_text.match(urlRegex)
           if (matches) {
             for (const url of matches) {
@@ -151,41 +188,37 @@ export async function GET(request: Request) {
     }
   }
 
-  // 4. Query contact profiles for all discovered participant phones
-  const participants: { phone: string; name: string; avatar_url: string | null }[] = []
-
-  if (participantPhones.size > 0) {
-    const phonesArr = Array.from(participantPhones)
+  // 4. Enrich participants with saved contact names and avatars from `contacts` table
+  if (participantMap.size > 0) {
+    const phonesArr = Array.from(participantMap.keys())
     const { data: contacts } = await admin
       .from('contacts')
       .select('phone, name, avatar_url')
       .eq('account_id', accountId)
       .in('phone', phonesArr)
 
-    const contactMap = new Map<string, { name: string; avatar_url: string | null }>()
     if (contacts) {
       for (const c of contacts) {
-        if (c.phone) {
-          contactMap.set(c.phone, { name: c.name || c.phone, avatar_url: c.avatar_url })
+        if (c.phone && participantMap.has(c.phone)) {
+          const existing = participantMap.get(c.phone)!
+          participantMap.set(c.phone, {
+            ...existing,
+            name: c.name || existing.name,
+            avatar_url: c.avatar_url || existing.avatar_url,
+          })
         }
       }
     }
-
-    for (const phone of phonesArr) {
-      const match = contactMap.get(phone)
-      participants.push({
-        phone,
-        name: match?.name || `+${phone}`,
-        avatar_url: match?.avatar_url || null,
-      })
-    }
   }
 
+  const finalParticipants = Array.from(participantMap.values())
+
   return NextResponse.json({
-    subject: groupInfo?.subject || null,
-    description: groupInfo?.description || null,
-    pictureUrl: groupInfo?.pictureUrl || null,
-    participants,
+    subject: fullGroupInfo?.subject || null,
+    description: fullGroupInfo?.description || null,
+    pictureUrl: fullGroupInfo?.pictureUrl || null,
+    owner: fullGroupInfo?.owner || null,
+    participants: finalParticipants,
     media: mediaList,
     links: linksList,
     docs: docsList,

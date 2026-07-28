@@ -293,7 +293,14 @@ export async function POST(request: Request) {
             const provider = getWhatsAppProvider(config)
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const provAny = provider as any
-            if (typeof provAny.getGroupParticipantsMap === 'function') {
+            if (typeof provAny.resolveLidToPhone === 'function') {
+              const res = await provAny.resolveLidToPhone(pRaw)
+              if (res?.phone) {
+                pPhone = res.phone
+                resolved = true
+              }
+            }
+            if (!resolved && typeof provAny.getGroupParticipantsMap === 'function') {
               const partMap = await provAny.getGroupParticipantsMap(key.remoteJid)
               const mapped = partMap.get(pPhone)
               if (mapped?.phone && mapped.phone !== pPhone) {
