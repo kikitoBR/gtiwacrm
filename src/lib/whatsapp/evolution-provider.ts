@@ -249,28 +249,40 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     to: string
     targetMessageId: string
     emoji: string
+    fromMe?: boolean
   }): Promise<WhatsAppSendResult> {
     const toPhone = this.formatPhone(args.to)
+    const remoteJid = toPhone.includes('@') ? toPhone : `${toPhone.replace(/\D/g, '')}@s.whatsapp.net`
     const body = {
       reactionMessage: {
         key: {
-          remoteJid: toPhone,
+          remoteJid,
+          fromMe: args.fromMe ?? false,
           id: args.targetMessageId,
         },
         reaction: args.emoji,
       },
-      reaction: args.emoji,
-      messageId: args.targetMessageId,
-      key: {
-        remoteJid: toPhone,
-        id: args.targetMessageId,
-      },
     }
 
-    const data = (await this.request('/message/sendReaction', body)) as {
-      key?: { id?: string }
-      messageId?: string
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let data: any = null
+    try {
+      data = await this.request('/message/sendReaction', body)
+    } catch {
+      try {
+        data = await this.request('/message/sendReaction', {
+          key: {
+            remoteJid,
+            fromMe: args.fromMe ?? false,
+            id: args.targetMessageId,
+          },
+          reaction: args.emoji,
+        })
+      } catch (err) {
+        console.warn('[Evolution API] sendReaction failed:', err)
+      }
     }
+
     const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
     return { messageId }
   }
@@ -281,19 +293,32 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     fromMe?: boolean
   }): Promise<{ success: boolean }> {
     const toPhone = this.formatPhone(args.to)
+    const remoteJid = toPhone.includes('@') ? toPhone : `${toPhone.replace(/\D/g, '')}@s.whatsapp.net`
+    const payload = {
+      status: 'REVOKE',
+      key: {
+        remoteJid,
+        fromMe: args.fromMe ?? true,
+        id: args.messageId,
+      },
+    }
+
     try {
-      await this.request('/message/delete', {
-        status: 'REVOKE',
-        key: {
-          remoteJid: toPhone,
-          fromMe: args.fromMe ?? true,
-          id: args.messageId,
-        },
-      })
+      await this.request('/message/delete', payload, 'POST')
       return { success: true }
-    } catch (err) {
-      console.warn('[Evolution API] deleteMessage failed:', err)
-      return { success: false }
+    } catch {
+      try {
+        await this.request('/chat/deleteMessageForEveryone', payload, 'POST')
+        return { success: true }
+      } catch {
+        try {
+          await this.request('/message/delete', payload, 'DELETE')
+          return { success: true }
+        } catch (err) {
+          console.warn('[Evolution API] deleteMessage failed:', err)
+          return { success: false }
+        }
+      }
     }
   }
 
@@ -304,20 +329,33 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     fromMe?: boolean
   }): Promise<{ success: boolean }> {
     const toPhone = this.formatPhone(args.to)
+    const remoteJid = toPhone.includes('@') ? toPhone : `${toPhone.replace(/\D/g, '')}@s.whatsapp.net`
+    const payload = {
+      number: toPhone.replace(/\D/g, ''),
+      text: args.newText,
+      key: {
+        id: args.messageId,
+        fromMe: args.fromMe ?? true,
+        remoteJid,
+      },
+    }
+
     try {
-      await this.request('/message/edit', {
-        number: toPhone,
-        text: args.newText,
-        key: {
-          id: args.messageId,
-          fromMe: args.fromMe ?? true,
-          remoteJid: toPhone,
-        },
-      })
+      await this.request('/message/updateMessage', payload, 'POST')
       return { success: true }
-    } catch (err) {
-      console.warn('[Evolution API] editMessage failed:', err)
-      return { success: false }
+    } catch {
+      try {
+        await this.request('/message/edit', payload, 'POST')
+        return { success: true }
+      } catch {
+        try {
+          await this.request('/chat/updateMessage', payload, 'POST')
+          return { success: true }
+        } catch (err) {
+          console.warn('[Evolution API] editMessage failed:', err)
+          return { success: false }
+        }
+      }
     }
   }
 

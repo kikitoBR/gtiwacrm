@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     // Resolve target message + its conversation; verify ownership.
     const { data: targetMessage, error: msgError } = await supabase
       .from('messages')
-      .select('id, message_id, conversation_id')
+      .select('id, whatsapp_message_id, sender_type, conversation_id')
       .eq('id', message_id)
       .maybeSingle();
 
@@ -73,9 +73,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Message not found' }, { status: 404 });
     }
 
-    if (!targetMessage.message_id) {
-      // No Meta ID yet — usually a sending/failed agent message. We can't
-      // tell Meta to react to a message it never received.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const waMsgId = targetMessage.whatsapp_message_id || (targetMessage as any).message_id;
+
+    if (!waMsgId) {
+      // No WhatsApp message ID yet — usually a sending/failed message.
       return NextResponse.json(
         { error: 'Cannot react to a message that has not been sent to WhatsApp' },
         { status: 400 },
@@ -122,10 +124,13 @@ export async function POST(request: Request) {
 
     try {
       const provider = getWhatsAppProvider(config);
-      await provider.sendReactionMessage({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const provAny = provider as any;
+      await provAny.sendReactionMessage({
         to: contact.phone,
-        targetMessageId: targetMessage.message_id,
+        targetMessageId: waMsgId,
         emoji,
+        fromMe: targetMessage.sender_type === 'agent' || targetMessage.sender_type === 'bot',
       });
     } catch (err) {
       const message =

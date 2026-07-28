@@ -32,6 +32,16 @@ interface MessageActionsProps {
   children: ReactNode;
 }
 
+function stripSignature(text: string): { cleanText: string; signaturePrefix: string } {
+  const match = text.match(/^(\*[^*]+\*\n\n?)/);
+  if (match) {
+    const signaturePrefix = match[1];
+    const cleanText = text.slice(signaturePrefix.length);
+    return { cleanText, signaturePrefix };
+  }
+  return { cleanText: text, signaturePrefix: "" };
+}
+
 export function MessageActions({
   message,
   onReply,
@@ -47,7 +57,8 @@ export function MessageActions({
 
   // Edit modal state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editText, setEditText] = useState(message.content_text ?? "");
+  const [editText, setEditText] = useState("");
+  const [sigPrefix, setSigPrefix] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Delete modal state
@@ -88,11 +99,19 @@ export function MessageActions({
     setTouchOpen(false);
   };
 
+  const handleOpenEdit = () => {
+    const { cleanText, signaturePrefix } = stripSignature(message.content_text ?? "");
+    setEditText(cleanText);
+    setSigPrefix(signaturePrefix);
+    setEditDialogOpen(true);
+  };
+
   const handleConfirmEdit = async () => {
     if (!editText.trim() || !onEdit) return;
     setSavingEdit(true);
     try {
-      await onEdit(message.id, editText.trim());
+      const finalText = sigPrefix ? `${sigPrefix}${editText.trim()}` : editText.trim();
+      await onEdit(message.id, finalText);
       setEditDialogOpen(false);
     } finally {
       setSavingEdit(false);
@@ -175,10 +194,7 @@ export function MessageActions({
             {onEdit && isAgent && message.content_type === "text" && (
               <button
                 type="button"
-                onClick={() => {
-                  setEditText(message.content_text ?? "");
-                  setEditDialogOpen(true);
-                }}
+                onClick={handleOpenEdit}
                 className="flex h-5 w-5 items-center justify-center rounded-full text-popover-foreground hover:bg-muted hover:text-foreground"
                 title="Editar mensagem"
               >
