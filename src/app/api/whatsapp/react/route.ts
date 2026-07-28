@@ -15,15 +15,6 @@ function supabaseAdmin() {
   );
 }
 
-/**
- * POST /api/whatsapp/react
- *
- * Body: { message_id: <internal UUID>, emoji: <single emoji or "" to remove> }
- *
- * Sends the reaction to Meta and mirrors it into `message_reactions`
- * (delete on empty emoji). Customer-side reactions are handled by the
- * webhook — this route only writes `actor_type = 'agent'` rows.
- */
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
@@ -42,8 +33,6 @@ export async function POST(request: Request) {
       return rateLimitResponse(limit);
     }
 
-    // Resolve the caller's account_id so conversation + whatsapp_config
-    // lookups work for teammates who didn't author the rows directly.
     const { data: profile } = await supabase
       .from('profiles')
       .select('account_id')
@@ -70,9 +59,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // Resolve target message + its conversation using admin client to bypass RLS.
     const admin = supabaseAdmin();
-    let { data: targetMessage, error: msgError } = await admin
+
+    // Query message by id or whatsapp_message_id
+    let { data: targetMessage } = await admin
       .from('messages')
       .select('id, whatsapp_message_id, sender_type, conversation_id')
       .eq('id', message_id)
@@ -87,28 +77,24 @@ export async function POST(request: Request) {
       targetMessage = altMsg;
     }
 
-    if (msgError && !targetMessage) {
-      return NextResponse.json({ error: 'Message not found' }, { status: 404 });
-    }
-
     if (!targetMessage) {
       return NextResponse.json({ error: 'Message not found' }, { status: 404 });
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const waMsgId = targetMessage.whatsapp_message_id || (targetMessage as any).message_id;
+    const waMsgId = targetMessage.whatsapp_message_id || (targetMessage as any).message_id || targetMessage.id;
 
     if (!waMsgId) {
-      // No WhatsApp message ID yet — usually a sending/failed message.
       return NextResponse.json(
         { error: 'Cannot react to a message that has not been sent to WhatsApp' },
         { status: 400 },
       );
     }
 
+    // Query conversation and contacts without alias to prevent PostgREST errors
     const { data: conversation, error: convError } = await admin
       .from('conversations')
-      .select('id, account_id, contact:contacts(phone)')
+      .select('id, account_id, contact_id, contacts(phone)')
       .eq('id', targetMessage.conversation_id)
       .maybeSingle();
 
@@ -119,22 +105,24 @@ export async function POST(request: Request) {
       );
     }
 
-    const contact = Array.isArray(conversation.contact)
-      ? conversation.contact[0]
-      : conversation.contact;
-    if (!contact?.phone) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const contactObj = Array.isArray(conversation.contacts)
+      ? conversation.contacts[0]
+      : (conversation as any).contacts;
+    const phone = contactObj?.phone;
+
+    if (!phone) {
       return NextResponse.json(
         { error: 'Contact phone number not found' },
         { status: 400 },
       );
     }
 
-    // WhatsApp config. Account-scoped post-multi-user.
-    const { data: config, error: configError } = await supabase
+    const { data: config, error: configError } = await admin
       .from('whatsapp_config')
       .select('*')
-      .eq('account_id', accountId)
-      .single();
+      .eq('account_id', conversation.account_id || accountId)
+      .maybeSingle();
 
     if (configError || !config) {
       return NextResponse.json(
@@ -148,7 +136,7 @@ export async function POST(request: Request) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const provAny = provider as any;
       await provAny.sendReactionMessage({
-        to: contact.phone,
+        to: phone,
         targetMessageId: waMsgId,
         emoji,
         fromMe: targetMessage.sender_type === 'agent' || targetMessage.sender_type === 'bot',
@@ -163,51 +151,41 @@ export async function POST(request: Request) {
       );
     }
 
-    // Mirror into DB. Empty emoji = removal.
+    // Mirror into DB
+    const { data: existingReaction } = await supabase
+      .from('message_reactions')
+      .select('id')
+      .eq('message_id', targetMessage.id)
+      .eq('actor_type', 'agent')
+      .eq('actor_id', user.id)
+      .maybeSingle();
+
     if (emoji === '') {
-      const { error: delError } = await supabase
+      if (existingReaction) {
+        await supabase
+          .from('message_reactions')
+          .delete()
+          .eq('id', existingReaction.id);
+      }
+    } else if (existingReaction) {
+      await supabase
         .from('message_reactions')
-        .delete()
-        .eq('message_id', targetMessage.id)
-        .eq('actor_type', 'agent')
-        .eq('actor_id', user.id);
-
-      if (delError) {
-        console.error('[whatsapp/react] DB delete failed:', delError.message);
-        return NextResponse.json(
-          { error: 'Reaction sent to Meta but DB delete failed' },
-          { status: 500 },
-        );
-      }
+        .update({ emoji })
+        .eq('id', existingReaction.id);
     } else {
-      // Upsert. The unique constraint (message_id, actor_type, actor_id)
-      // lets us swap emoji in a single statement.
-      const { error: upsertError } = await supabase.from('message_reactions').upsert(
-        {
-          message_id: targetMessage.id,
-          conversation_id: targetMessage.conversation_id,
-          actor_type: 'agent',
-          actor_id: user.id,
-          emoji,
-        },
-        { onConflict: 'message_id,actor_type,actor_id' },
-      );
-
-      if (upsertError) {
-        console.error('[whatsapp/react] DB upsert failed:', upsertError.message);
-        return NextResponse.json(
-          { error: 'Reaction sent to Meta but DB upsert failed' },
-          { status: 500 },
-        );
-      }
+      await supabase.from('message_reactions').insert({
+        message_id: targetMessage.id,
+        conversation_id: targetMessage.conversation_id,
+        actor_type: 'agent',
+        actor_id: user.id,
+        emoji,
+      });
     }
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error in WhatsApp react POST:', error);
-    return NextResponse.json(
-      { error: 'Failed to react to message' },
-      { status: 500 },
-    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Internal error';
+    console.error('[whatsapp/react] Internal error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

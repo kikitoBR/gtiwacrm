@@ -252,39 +252,29 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     fromMe?: boolean
   }): Promise<WhatsAppSendResult> {
     const toPhone = this.formatPhone(args.to)
-    const remoteJid = toPhone.includes('@') ? toPhone : `${toPhone.replace(/\D/g, '')}@s.whatsapp.net`
-    const body = {
-      reactionMessage: {
-        key: {
-          remoteJid,
-          fromMe: args.fromMe ?? false,
-          id: args.targetMessageId,
-        },
-        reaction: args.emoji,
-      },
-    }
+    const cleanPhone = toPhone.replace(/\D/g, '')
+    const remoteJid = toPhone.includes('@') ? toPhone : `${cleanPhone}@s.whatsapp.net`
+    const fromMe = args.fromMe ?? false
+    const key = { remoteJid, fromMe, id: args.targetMessageId }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let data: any = null
-    try {
-      data = await this.request('/message/sendReaction', body)
-    } catch {
+    const payloads = [
+      { reactionMessage: { key, reaction: args.emoji } },
+      { number: cleanPhone, reaction: args.emoji, key },
+      { reaction: args.emoji, key },
+    ]
+
+    for (const p of payloads) {
       try {
-        data = await this.request('/message/sendReaction', {
-          key: {
-            remoteJid,
-            fromMe: args.fromMe ?? false,
-            id: args.targetMessageId,
-          },
-          reaction: args.emoji,
-        })
-      } catch (err) {
-        console.warn('[Evolution API] sendReaction failed:', err)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const data = (await this.request('/message/sendReaction', p, 'POST')) as any
+        const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
+        return { messageId }
+      } catch {
+        /* continue fallback */
       }
     }
 
-    const messageId = data?.key?.id || data?.messageId || `evo-${Date.now()}`
-    return { messageId }
+    return { messageId: `evo-${Date.now()}` }
   }
 
   async deleteMessage(args: {
@@ -295,50 +285,45 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     const toPhone = this.formatPhone(args.to)
     const cleanPhone = toPhone.replace(/\D/g, '')
     const remoteJid = toPhone.includes('@') ? toPhone : `${cleanPhone}@s.whatsapp.net`
-    const key = {
-      remoteJid,
-      fromMe: args.fromMe ?? true,
-      id: args.messageId,
-    }
-    const payload = {
-      number: cleanPhone,
-      id: args.messageId,
-      remoteJid,
-      fromMe: args.fromMe ?? true,
-      status: 'REVOKE',
-      key,
+    const fromMe = args.fromMe ?? true
+    const key = { remoteJid, fromMe, id: args.messageId }
+
+    const payloads = [
+      { number: cleanPhone, id: args.messageId, remoteJid, fromMe, status: 'REVOKE', key },
+      { remoteJid, id: args.messageId, fromMe },
+      { keys: [key] },
+      { key },
+    ]
+
+    for (const p of payloads) {
+      try {
+        await this.request('/message/delete', p, 'POST')
+        return { success: true }
+      } catch { /* continue */ }
+
+      try {
+        await this.request('/message/delete', p, 'DELETE')
+        return { success: true }
+      } catch { /* continue */ }
+
+      try {
+        await this.request('/chat/deleteMessageForEveryone', p, 'DELETE')
+        return { success: true }
+      } catch { /* continue */ }
+
+      try {
+        await this.request('/chat/deleteMessageForEveryone', p, 'POST')
+        return { success: true }
+      } catch { /* continue */ }
+
+      try {
+        await this.request('/message/deleteMessageForEveryone', p, 'POST')
+        return { success: true }
+      } catch { /* continue */ }
     }
 
-    try {
-      await this.request('/message/delete', payload, 'POST')
-      return { success: true }
-    } catch {
-      try {
-        await this.request('/message/delete', payload, 'DELETE')
-        return { success: true }
-      } catch {
-        try {
-          await this.request('/chat/deleteMessageForEveryone', {
-            remoteJid,
-            id: args.messageId,
-            fromMe: args.fromMe ?? true,
-          }, 'POST')
-          return { success: true }
-        } catch {
-          try {
-            await this.request('/message/deleteMessageForEveryone', {
-              remoteJid,
-              id: args.messageId,
-              fromMe: args.fromMe ?? true,
-            }, 'POST')
-            return { success: true }
-          } catch (err) {
-            console.warn('[Evolution API] deleteMessage failed:', err)
-            return { success: false }
-          }
-        }
-      }
-    }
+    console.warn('[Evolution API] deleteMessage failed after trying all endpoints')
+    return { success: false }
   }
 
   async editMessage(args: {
