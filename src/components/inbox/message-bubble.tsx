@@ -360,12 +360,15 @@ function MessageContent({
         </div>
       );
 
-    case "audio":
+    case "audio": {
+      const initialTranscription = (message.metadata as Record<string, unknown> | undefined)?.transcription as string | undefined;
       return (
         <div>
           {message.media_url ? (
             <AudioPlayer
               url={message.media_url}
+              messageId={message.id}
+              initialTranscription={initialTranscription}
               isAgent={isAgent}
             />
           ) : (
@@ -373,6 +376,7 @@ function MessageContent({
           )}
         </div>
       );
+    }
 
     case "document":
       if (!message.media_url) {

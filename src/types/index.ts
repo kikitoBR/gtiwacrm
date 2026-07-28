@@ -256,6 +256,8 @@ export interface Message {
    * badge in the inbox. Migration 033.
    */
   ai_generated?: boolean;
+  /** Metadata dictionary for extra payload details (e.g. transcriptions). */
+  metadata?: Record<string, unknown>;
 }
 
 export type ReactionActor = 'customer' | 'agent';

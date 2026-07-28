@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Play, Pause, ImageOff } from "lucide-react";
+import { Play, Pause, ImageOff, FileText, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface AudioPlayerProps {
   url: string;
+  messageId?: string;
+  initialTranscription?: string | null;
   isAgent?: boolean;
   className?: string;
 }
@@ -29,6 +31,8 @@ function generateWaveformBars(seed: string, count = 36): number[] {
 
 export function AudioPlayer({
   url,
+  messageId,
+  initialTranscription,
   isAgent = false,
   className,
 }: AudioPlayerProps) {
@@ -39,6 +43,12 @@ export function AudioPlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState<1 | 1.5 | 2>(1);
+
+  // Transcription state
+  const [transcription, setTranscription] = useState<string | null>(initialTranscription || null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
+  const [showTranscription, setShowTranscription] = useState(true);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const waveformRef = useRef<HTMLDivElement | null>(null);
@@ -106,6 +116,38 @@ export function AudioPlayer({
     setCurrentTime(newTime);
   };
 
+  const handleTranscribe = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (transcription) {
+      setShowTranscription(!showTranscription);
+      return;
+    }
+
+    setIsTranscribing(true);
+    setTranscriptionError(null);
+
+    try {
+      const res = await fetch("/api/whatsapp/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mediaUrl: url, messageId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Falha ao transcrever o áudio");
+      }
+
+      setTranscription(data.text);
+      setShowTranscription(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao transcrever áudio";
+      setTranscriptionError(msg);
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
   const formatTime = (seconds: number) => {
     if (!seconds || isNaN(seconds)) return "0:00";
     const mins = Math.floor(seconds / 60);
@@ -127,7 +169,7 @@ export function AudioPlayer({
   return (
     <div
       className={cn(
-        "flex flex-col gap-1 rounded-xl p-2.5 min-w-[240px] max-w-[300px] select-none",
+        "flex flex-col gap-1.5 rounded-xl p-2.5 min-w-[260px] max-w-[320px] select-none",
         isAgent
           ? "bg-primary text-primary-foreground"
           : "bg-muted/80 text-foreground border border-border/40",
@@ -200,11 +242,11 @@ export function AudioPlayer({
                     height: `${heightPercent}%`,
                     backgroundColor: isPlayed
                       ? isAgent
-                        ? "#38bdf8" // Cyan highlight for played bars in agent bubble
-                        : "#0284c7" // Blue highlight for played bars in customer bubble
+                        ? "#38bdf8"
+                        : "#0284c7"
                       : isAgent
-                      ? "rgba(255, 255, 255, 0.4)" // Dimmed white for unplayed in agent bubble
-                      : "rgba(100, 116, 139, 0.35)", // Dimmed slate for unplayed in customer bubble
+                      ? "rgba(255, 255, 255, 0.4)"
+                      : "rgba(100, 116, 139, 0.35)",
                   }}
                 />
               );
@@ -243,6 +285,68 @@ export function AudioPlayer({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Transcribe Button & Output */}
+      <div className="mt-1 flex flex-col gap-1 border-t border-border/20 pt-1.5">
+        {!transcription ? (
+          <button
+            type="button"
+            onClick={handleTranscribe}
+            disabled={isTranscribing || loading}
+            className={cn(
+              "inline-flex items-center gap-1.5 text-[11px] font-semibold transition-colors w-fit px-1.5 py-0.5 rounded cursor-pointer",
+              isAgent
+                ? "text-primary-foreground/90 hover:bg-primary-foreground/15"
+                : "text-primary hover:bg-primary/10"
+            )}
+          >
+            {isTranscribing ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>Transcrevendo...</span>
+              </>
+            ) : (
+              <>
+                <FileText className="h-3 w-3" />
+                <span>Transcrever áudio</span>
+              </>
+            )}
+          </button>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <button
+              type="button"
+              onClick={() => setShowTranscription(!showTranscription)}
+              className={cn(
+                "inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider transition-opacity opacity-80 hover:opacity-100 cursor-pointer w-fit",
+                isAgent ? "text-primary-foreground" : "text-muted-foreground"
+              )}
+            >
+              <Sparkles className="h-3 w-3 text-amber-400" />
+              <span>{showTranscription ? "Ocultar Transcrição" : "Ver Transcrição"}</span>
+            </button>
+
+            {showTranscription && (
+              <div
+                className={cn(
+                  "rounded-lg p-2 text-xs leading-relaxed italic border select-text whitespace-pre-wrap break-words",
+                  isAgent
+                    ? "bg-black/15 border-white/15 text-primary-foreground/95"
+                    : "bg-background/70 border-border/60 text-foreground"
+                )}
+              >
+                &ldquo;{transcription}&rdquo;
+              </div>
+            )}
+          </div>
+        )}
+
+        {transcriptionError && (
+          <div className="text-[10px] text-red-400 font-medium px-1 leading-tight">
+            {transcriptionError}
+          </div>
+        )}
       </div>
     </div>
   );
