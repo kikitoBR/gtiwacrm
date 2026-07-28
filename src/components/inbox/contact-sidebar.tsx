@@ -126,6 +126,8 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
     fetchContactData();
     if (isGroup) {
       fetchGroupData();
+    } else {
+      setGroupData(null);
     }
   }, [contact?.id, fetchContactData, fetchGroupData, isGroup]);
 
@@ -183,9 +185,13 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
     );
   }
 
-  const displayName = groupData?.subject || contact.name || contact.phone;
-  const initials = displayName.charAt(0).toUpperCase();
-  const avatarImage = groupData?.pictureUrl || contact.avatar_url;
+  const displayName = isGroup
+    ? (groupData?.subject || contact.name || contact.phone)
+    : (contact.name || contact.phone);
+  const initials = displayName ? displayName.charAt(0).toUpperCase() : "C";
+  const avatarImage = isGroup
+    ? (groupData?.pictureUrl || contact.avatar_url)
+    : contact.avatar_url;
   const rawDigits = contact.phone ? contact.phone.replace(/\D/g, "") : "";
   const displayPhone = rawDigits.length >= 8
     ? (contact.phone.startsWith("+") ? contact.phone : `+${rawDigits}`)
@@ -483,9 +489,11 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-muted-foreground truncate">
-                          {displayMemberPhone || "Membro do Grupo"}
-                        </p>
+                        {displayMemberPhone && (
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            {displayMemberPhone}
+                          </p>
+                        )}
                       </div>
                     </div>
                   );

@@ -85,7 +85,7 @@ export async function GET(request: Request) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let fullGroupInfo: any = null
-  const participantMap = new Map<string, { phone: string; name: string; avatar_url: string | null; admin?: string | null }>()
+  const participantMap = new Map<string, { phone: string | null; name: string; avatar_url: string | null; admin?: string | null }>()
 
   if (config && jid) {
     try {
@@ -162,13 +162,20 @@ export async function GET(request: Request) {
 
         if (m.content_text) {
           const { participantName, participantPhone } = parseGroupMessage(m.content_text)
-          if (participantPhone && participantPhone.length >= 8 && participantPhone.length <= 13) {
-            if (!participantMap.has(participantPhone)) {
-              participantMap.set(participantPhone, {
-                phone: participantPhone,
-                name: participantName || `+${participantPhone}`,
+          const nameStr = participantName || (participantPhone ? `+${participantPhone}` : 'Membro do Grupo')
+          if (participantName || participantPhone) {
+            const key = participantPhone || nameStr
+            if (!participantMap.has(key)) {
+              participantMap.set(key, {
+                phone: participantPhone || null,
+                name: nameStr,
                 avatar_url: null,
               })
+            } else {
+              const existing = participantMap.get(key)!
+              if (participantName && (!existing.name || existing.name === 'Membro do Grupo' || existing.name.startsWith('+'))) {
+                existing.name = participantName
+              }
             }
           }
 

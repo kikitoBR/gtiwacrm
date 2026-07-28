@@ -591,6 +591,8 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
           const rawId = typeof p === 'string' ? p : p?.id || p?.jid || p?.number || ''
           const rawLid = typeof p === 'object' ? p?.lid || '' : ''
           const admin = typeof p === 'object' ? (p?.admin || p?.role || null) : null
+          const pName = typeof p === 'object' ? (p?.pushName || p?.name || p?.formattedName || p?.notify || p?.shortName) : undefined
+          const pPicture = typeof p === 'object' ? (p?.imgUrl || p?.pictureUrl || p?.profilePictureUrl) : undefined
 
           if (!rawId && !rawLid) continue
 
@@ -604,8 +606,8 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
               parsedParticipants.push({
                 id: targetJid,
                 phone: cached.phone,
-                name: cached.name,
-                avatar_url: cached.picture,
+                name: pName || cached.name,
+                avatar_url: pPicture || cached.picture,
                 admin,
               })
             } else if (uncachedLidCount < MAX_UNCACHED_LID_FETCHES) {
@@ -615,14 +617,16 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
                 parsedParticipants.push({
                   id: targetJid,
                   phone: resolved.phone,
-                  name: resolved.name,
-                  avatar_url: resolved.picture,
+                  name: pName || resolved.name,
+                  avatar_url: pPicture || resolved.picture,
                   admin,
                 })
               } else {
                 parsedParticipants.push({
                   id: targetJid,
                   phone: null,
+                  name: pName,
+                  avatar_url: pPicture,
                   admin,
                 })
               }
@@ -630,6 +634,8 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
               parsedParticipants.push({
                 id: targetJid,
                 phone: null,
+                name: pName,
+                avatar_url: pPicture,
                 admin,
               })
             }
@@ -639,6 +645,8 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
               parsedParticipants.push({
                 id: rawId,
                 phone: cleanPhone,
+                name: pName,
+                avatar_url: pPicture,
                 admin,
               })
             }
