@@ -27,6 +27,7 @@ import { MessageReactions } from "./message-reactions";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
 import { useTranslations } from "next-intl";
 import { parseGroupMessage, getParticipantColor } from "@/lib/whatsapp/group-utils";
+import { AudioPlayer } from "./audio-player";
 
 interface MessageBubbleProps {
   message: Message;
@@ -299,7 +300,19 @@ function MediaVideo({ url, caption }: { url: string; caption?: string }) {
   );
 }
 
-function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof useTranslations> }) {
+function MessageContent({
+  message,
+  t,
+  isAgent = false,
+  avatarUrl,
+  participantName,
+}: {
+  message: Message;
+  t: ReturnType<typeof useTranslations>;
+  isAgent?: boolean;
+  avatarUrl?: string | null;
+  participantName?: string | null;
+}) {
   switch (message.content_type) {
     case "text":
       return (
@@ -351,7 +364,12 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
       return (
         <div>
           {message.media_url ? (
-            <audio src={message.media_url} controls className="max-w-60" />
+            <AudioPlayer
+              url={message.media_url}
+              avatarUrl={avatarUrl}
+              senderName={participantName || (isAgent ? "Você" : "Contato")}
+              isAgent={isAgent}
+            />
           ) : (
             <MediaUnavailable label={t("audio")} t={t} />
           )}
@@ -566,7 +584,13 @@ export function MessageBubble({
               </span>
             </div>
           ) : (
-            <MessageContent message={displayMessage} t={t} />
+            <MessageContent
+              message={displayMessage}
+              t={t}
+              isAgent={isAgent}
+              avatarUrl={avatarUrl}
+              participantName={participantName}
+            />
           )}
           <div
             className={cn(
