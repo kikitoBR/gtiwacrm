@@ -9,8 +9,7 @@ import {
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { Search, ChevronDown, X, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,6 +20,27 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+
+function formatPortugueseTimeAgo(dateInput?: string | Date | null): string {
+  if (!dateInput) return "";
+  const date = new Date(dateInput);
+  if (isNaN(date.getTime())) return "";
+
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffSecs < 60) return "Agora";
+  if (diffMins < 60) return `${diffMins} min`;
+  if (diffHours < 24) return `há ${diffHours} h`;
+  if (diffDays === 1) return "Ontem";
+  if (diffDays < 7) return `há ${diffDays} dias`;
+
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -58,7 +78,6 @@ export function ConversationList({
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
     { label: t("filterAll"), value: "all" },
     { label: t("filterUnread"), value: "unread" },
-    { label: t("filterGroups"), value: "groups" },
     { label: t("filterOpen"), value: "open" },
     { label: t("filterPending"), value: "pending" },
     { label: t("filterClosed"), value: "closed" },
@@ -266,6 +285,20 @@ export function ConversationList({
             </DropdownMenuContent>
           </DropdownMenu>
 
+          <button
+            type="button"
+            onClick={() => setFilter(filter === "groups" ? "all" : "groups")}
+            className={cn(
+              "inline-flex items-center justify-center h-7 gap-1.5 px-2.5 text-xs font-medium rounded-md transition-colors cursor-pointer",
+              filter === "groups"
+                ? "bg-primary text-primary-foreground font-semibold"
+                : "border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <Users className="h-3.5 w-3.5" />
+            {t("filterGroups", { fallback: "Grupos" })}
+          </button>
+
           {tags.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -447,11 +480,7 @@ function ConversationItem({
     onSelect(conversation);
   }, [onSelect, conversation]);
 
-  const timeAgo = conversation.last_message_at
-    ? formatDistanceToNow(new Date(conversation.last_message_at), {
-        addSuffix: false,
-      })
-    : "";
+  const timeAgo = formatPortugueseTimeAgo(conversation.last_message_at);
 
   return (
     <button

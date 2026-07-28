@@ -158,9 +158,12 @@ export function SettingsOverview({
     {
       section: 'signature',
       loading: false,
-      subtitle: profile?.signature_enabled
-        ? `Ativada: *${profile.signature_text || profile.full_name || 'Atendente'}*`
-        : 'Desativada',
+      subtitle: (() => {
+        const localSigEnabled = typeof window !== 'undefined' && user?.id ? localStorage.getItem(`gtizap_sig_enabled_${user.id}`) : null;
+        const sigEnabled = user?.user_metadata?.signature_enabled ?? profile?.signature_enabled ?? (localSigEnabled !== null ? localSigEnabled === 'true' : false);
+        const sigText = user?.user_metadata?.signature_text || profile?.signature_text || profile?.full_name || 'Atendente';
+        return sigEnabled ? `Ativada: *${sigText}*` : 'Desativada';
+      })(),
     },
     {
       section: 'whatsapp',

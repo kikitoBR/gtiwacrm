@@ -214,6 +214,46 @@ function InboxPageInner() {
     };
 
     checkConnection();
+
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+    }
+  }, []);
+
+  // Soft dual-tone Web Audio API chime sound
+  const playNotificationChime = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc1.type = "sine";
+      osc2.type = "sine";
+
+      osc1.frequency.setValueAtTime(587.33, now);
+      osc2.frequency.setValueAtTime(880.0, now + 0.08);
+
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start(now);
+      osc1.stop(now + 0.15);
+      osc2.start(now + 0.08);
+      osc2.stop(now + 0.35);
+    } catch {
+      // Best effort audio playback
+    }
   }, []);
 
   // Handle realtime message events
@@ -222,6 +262,62 @@ function InboxPageInner() {
       const newMsg = event.new;
 
       if (event.eventType === "INSERT") {
+        // Check if message is inbound and user is not actively viewing this exact conversation
+        const isInbound =
+          newMsg.sender_type === "customer" ||
+          (newMsg as { direction?: string }).direction === "inbound";
+        const isCurrentChatActiveAndFocused =
+          activeConversation?.id === newMsg.conversation_id &&
+          typeof document !== "undefined" &&
+          document.hasFocus();
+
+        if (isInbound && !isCurrentChatActiveAndFocused) {
+          playNotificationChime();
+
+          const targetConv = conversations.find((c) => c.id === newMsg.conversation_id);
+          const senderName =
+            targetConv?.contact?.name || targetConv?.contact?.phone || "Nova mensagem";
+          const snippetText = newMsg.content_text || "Mensagem recebida no WhatsApp";
+
+          // Desktop notification if tab in background
+          if (
+            typeof window !== "undefined" &&
+            "Notification" in window &&
+            Notification.permission === "granted" &&
+            document.hidden
+          ) {
+            new Notification(senderName, {
+              body: snippetText,
+              icon: "/gti-logo-white.png",
+            });
+          }
+
+          // Visual Sonner toast notification
+          toast.custom(
+            (tId) => (
+              <div
+                onClick={() => {
+                  if (targetConv) setActiveConversation(targetConv);
+                  toast.dismiss(tId);
+                }}
+                className="flex items-center gap-3 rounded-xl border border-primary/30 bg-popover/95 p-3.5 shadow-2xl backdrop-blur-md cursor-pointer hover:border-primary transition-all duration-200"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">
+                  {senderName.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold text-foreground truncate">{senderName}</p>
+                    <span className="text-[10px] text-primary font-medium">WhatsApp</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">{snippetText}</p>
+                </div>
+              </div>
+            ),
+            { duration: 4500 }
+          );
+        }
+
         // Add to messages if it belongs to active conversation
         if (
           activeConversation &&
@@ -276,7 +372,7 @@ function InboxPageInner() {
         );
       }
     },
-    [activeConversation, hydrateConversation]
+    [activeConversation, conversations, hydrateConversation, playNotificationChime]
   );
 
   // Handle realtime conversation events
