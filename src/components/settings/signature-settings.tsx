@@ -41,7 +41,7 @@ export function SignatureSettings() {
     try {
       const text = signatureText.trim();
 
-      // 1. Update Supabase Auth user_metadata (always supported on Supabase Auth!)
+      // 1. Update Supabase Auth user_metadata (official per-user metadata store)
       const { error: authError } = await supabase.auth.updateUser({
         data: {
           signature_enabled: enabled,
@@ -49,22 +49,10 @@ export function SignatureSettings() {
         },
       });
       if (authError) {
-        console.warn("Auth user_metadata update note:", authError.message);
+        throw authError;
       }
 
-      // 2. Update profiles table
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          signature_enabled: enabled,
-          signature_text: text,
-        })
-        .eq("user_id", user.id);
-      if (profileError) {
-        console.warn("Profiles update note:", profileError.message);
-      }
-
-      // 3. Update localStorage fallback
+      // 2. Update localStorage fallback
       if (typeof window !== "undefined") {
         localStorage.setItem(`gtizap_sig_enabled_${user.id}`, String(enabled));
         localStorage.setItem(`gtizap_sig_text_${user.id}`, text);
@@ -72,8 +60,9 @@ export function SignatureSettings() {
 
       await refreshProfile();
       toast.success("Configuração de assinatura salva com sucesso!");
-    } catch {
-      toast.error("Erro ao salvar configuração de assinatura.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro ao salvar assinatura.";
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
