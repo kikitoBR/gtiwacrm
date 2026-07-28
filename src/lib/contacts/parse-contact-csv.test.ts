@@ -70,4 +70,23 @@ describe('parseContactCsv', () => {
       ],
     });
   });
+
+  it('parses Google Contacts CSV format correctly', () => {
+    const googleCsv = `First Name,Middle Name,Last Name,Labels,E-mail 1 - Value,Phone 1 - Value
+Alex Tecnico,Novo,Gti,@equipe_gti ::: * myContacts,alex.09257@edu.campos.rj.gov.br,+55 22 99819-9301`;
+
+    expect(parseContactCsv(googleCsv)).toEqual({
+      hasTagsColumn: true,
+      hasCompanyColumn: true,
+      rows: [
+        {
+          phone: '+55 22 99819-9301',
+          name: 'Alex Tecnico Novo Gti',
+          email: 'alex.09257@edu.campos.rj.gov.br',
+          company: undefined,
+          tagNames: ['equipe_gti'],
+        },
+      ],
+    });
+  });
 });

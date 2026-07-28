@@ -1,6 +1,7 @@
 /**
  * CSV parsing for the contacts import modal. Shared + unit-tested so
  * tag-column handling stays aligned with phone/name/email/company.
+ * Supports standard CSV format as well as Google Contacts / Gmail / Android CSV exports.
  */
 
 export interface ParsedContactRow {
@@ -19,12 +20,24 @@ export function parseTagCell(value: string | undefined): string[] {
   const seen = new Set<string>();
   const names: string[] = [];
 
-  for (const part of value.split(/[,;]/)) {
-    const name = part.trim();
+  const parts = value.split(/:::|[,;]/);
+  for (const part of parts) {
+    const name = part.trim().replace(/^[*@\s]+/, '');
     if (!name) continue;
-    const key = name.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
+
+    // Ignore internal Google Contacts metadata labels
+    const lower = name.toLowerCase();
+    if (
+      lower === 'mycontacts' ||
+      lower === 'other' ||
+      lower === 'work' ||
+      lower.startsWith('importado em')
+    ) {
+      continue;
+    }
+
+    if (seen.has(lower)) continue;
+    seen.add(lower);
     names.push(name);
   }
 
@@ -45,19 +58,38 @@ export function parseContactCsv(text: string): ParseContactCsvResult {
     return { rows: [], hasTagsColumn: false, hasCompanyColumn: false };
   }
 
-  const headers = lines[0]
-    .split(',')
-    .map((h) => h.trim().toLowerCase().replace(/["']/g, ''));
+  const headers = parseCsvLine(lines[0]).map((h) =>
+    h.trim().toLowerCase().replace(/["']/g, '')
+  );
 
-  const phoneIdx = headers.indexOf('phone');
+  // Helper to find index matching exact name or substring aliases
+  const findIndexByAliases = (...aliases: string[]): number => {
+    for (const alias of aliases) {
+      const idx = headers.indexOf(alias);
+      if (idx !== -1) return idx;
+    }
+    for (const alias of aliases) {
+      const idx = headers.findIndex((h) => h.includes(alias));
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  };
+
+  const phoneIdx = findIndexByAliases('phone 1 - value', 'phone', 'telefone', 'celular', 'phone 1', 'mobile', 'tel');
+  const phone2Idx = findIndexByAliases('phone 2 - value', 'phone 2', 'phone 3 - value');
+
+  const fullNameIdx = findIndexByAliases('name', 'nome', 'nome completo', 'file as', 'formatted name');
+  const firstNameIdx = findIndexByAliases('first name', 'nome');
+  const middleNameIdx = findIndexByAliases('middle name');
+  const lastNameIdx = findIndexByAliases('last name', 'sobrenome');
+
+  const emailIdx = findIndexByAliases('e-mail 1 - value', 'email 1 - value', 'email', 'e-mail', 'mail');
+  const companyIdx = findIndexByAliases('organization name', 'company', 'empresa', 'organization', 'org');
+  const tagsIdx = findIndexByAliases('labels', 'tags', 'etiquetas', 'grupos', 'groups', 'categories');
+
   if (phoneIdx === -1) {
     return { rows: [], hasTagsColumn: false, hasCompanyColumn: false };
   }
-
-  const nameIdx = headers.indexOf('name');
-  const emailIdx = headers.indexOf('email');
-  const companyIdx = headers.indexOf('company');
-  const tagsIdx = headers.indexOf('tags');
 
   const rows: ParsedContactRow[] = [];
 
@@ -66,44 +98,62 @@ export function parseContactCsv(text: string): ParseContactCsvResult {
     if (!line) continue;
 
     const values = parseCsvLine(line);
-    const phone = values[phoneIdx]?.replace(/["']/g, '').trim();
+
+    // Primary phone, fallback to secondary phone
+    let phone = values[phoneIdx]?.replace(/["']/g, '').trim();
+    if (!phone && phone2Idx >= 0) {
+      phone = values[phone2Idx]?.replace(/["']/g, '').trim();
+    }
     if (!phone) continue;
+
+    // Resolve name: combine First + Middle + Last or use Full Name
+    let name: string | undefined;
+    if (firstNameIdx >= 0 || lastNameIdx >= 0) {
+      const first = values[firstNameIdx]?.replace(/["']/g, '').trim() || '';
+      const middle = middleNameIdx >= 0 ? values[middleNameIdx]?.replace(/["']/g, '').trim() || '' : '';
+      const last = lastNameIdx >= 0 ? values[lastNameIdx]?.replace(/["']/g, '').trim() || '' : '';
+      const combined = [first, middle, last].filter(Boolean).join(' ');
+      if (combined) name = combined;
+    }
+    if (!name && fullNameIdx >= 0) {
+      name = values[fullNameIdx]?.replace(/["']/g, '').trim() || undefined;
+    }
+
+    const email = emailIdx >= 0 ? values[emailIdx]?.replace(/["']/g, '').trim() || undefined : undefined;
+    const company = companyIdx >= 0 ? values[companyIdx]?.replace(/["']/g, '').trim() || undefined : undefined;
+    const tagNames = tagsIdx >= 0 ? parseTagCell(values[tagsIdx]?.replace(/["']/g, '')) : [];
 
     rows.push({
       phone,
-      name:
-        nameIdx >= 0
-          ? values[nameIdx]?.replace(/["']/g, '').trim() || undefined
-          : undefined,
-      email:
-        emailIdx >= 0
-          ? values[emailIdx]?.replace(/["']/g, '').trim() || undefined
-          : undefined,
-      company:
-        companyIdx >= 0
-          ? values[companyIdx]?.replace(/["']/g, '').trim() || undefined
-          : undefined,
-      tagNames:
-        tagsIdx >= 0 ? parseTagCell(values[tagsIdx]?.replace(/["']/g, '')) : [],
+      name: name || undefined,
+      email: email || undefined,
+      company: company || undefined,
+      tagNames,
     });
   }
 
   return {
     rows,
     hasTagsColumn: tagsIdx >= 0,
-    hasCompanyColumn: companyIdx >= 0,
+    hasCompanyColumn: companyIdx >= 0 || firstNameIdx >= 0,
   };
 }
 
-/** Simple CSV line parse (handles quoted fields). */
+/** CSV line parser handling quotes. */
 function parseCsvLine(line: string): string[] {
   const values: string[] = [];
   let current = '';
   let inQuotes = false;
 
-  for (const char of line) {
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
     if (char === '"') {
-      inQuotes = !inQuotes;
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
     } else if (char === ',' && !inQuotes) {
       values.push(current.trim());
       current = '';
