@@ -49,6 +49,7 @@ import {
   SlidersHorizontal,
   Filter,
   X,
+  RefreshCw,
 } from 'lucide-react';
 import { ContactForm } from '@/components/contacts/contact-form';
 import { ContactDetailView } from '@/components/contacts/contact-detail-view';
@@ -339,6 +340,26 @@ export default function ContactsPage() {
     setPage(0);
   }
 
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSyncContacts = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/contacts/sync', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(`${data.syncedCount || 0} contatos sincronizados com o WhatsApp!`);
+        fetchContacts();
+      } else {
+        toast.error(data.error || 'Erro ao sincronizar contatos');
+      }
+    } catch {
+      toast.error('Falha ao conectar com o servidor para sincronizar');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -360,6 +381,21 @@ export default function ContactsPage() {
               {t('customFieldsBtn')}
             </Button>
           )}
+          <GatedButton
+            variant="outline"
+            canAct={canEdit}
+            gateReason="add or import contacts"
+            onClick={handleSyncContacts}
+            disabled={syncing}
+            className="border-border text-muted-foreground hover:bg-muted"
+          >
+            {syncing ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RefreshCw className="size-4" />
+            )}
+            Sincronizar
+          </GatedButton>
           <GatedButton
             variant="outline"
             canAct={canEdit}

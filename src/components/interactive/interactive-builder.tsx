@@ -17,17 +17,6 @@ import {
 } from "@/lib/whatsapp/interactive";
 import { InteractivePreview } from "./interactive-preview";
 
-// ------------------------------------------------------------
-// Blank payload factories — used to seed a fresh builder and to
-// switch kind without losing the shared body/header/footer.
-// ------------------------------------------------------------
-
-/**
- * Generate an id that doesn't collide with any already in use. A plain
- * count-based id (`btn_${length+1}`) regenerates an existing id after a
- * middle item is removed, which then trips the duplicate-id validator and
- * silently blocks sending. Increment past any taken id instead.
- */
 function nextId(existing: string[], prefix: string): string {
   const taken = new Set(existing);
   let n = existing.length + 1;
@@ -47,7 +36,7 @@ export function blankListPayload(): InteractiveListPayload {
   return {
     kind: "list",
     body: "",
-    button_label: "Menu",
+    button_label: "Opções",
     sections: [{ title: "", rows: [{ id: "row_1", title: "" }] }],
   };
 }
@@ -55,17 +44,9 @@ export function blankListPayload(): InteractiveListPayload {
 interface InteractiveBuilderProps {
   value: InteractiveMessagePayload;
   onChange: (payload: InteractiveMessagePayload) => void;
-  /** Show the live WhatsApp-style preview beside the form. Default true. */
   showPreview?: boolean;
 }
 
-/**
- * Controlled builder for a WhatsApp interactive message (reply buttons
- * or list). Enforces Meta's char limits inline (maxLength + counters)
- * and surfaces a single validation error via `validateInteractivePayload`
- * — the same check the server runs before sending. Shared by the inbox
- * composer, the automation Send node, and the quick-replies manager.
- */
 export function InteractiveBuilder({
   value,
   onChange,
@@ -94,29 +75,29 @@ export function InteractiveBuilder({
         <div className="flex gap-2">
           <KindButton
             active={value.kind === "buttons"}
-            label="Reply buttons"
+            label="Botões de resposta"
             onClick={() => switchKind("buttons")}
           />
           <KindButton
             active={value.kind === "list"}
-            label="List"
+            label="Lista de opções"
             onClick={() => switchKind("list")}
           />
         </div>
 
-        <Field label="Body" counter={`${value.body.length}/${INTERACTIVE_LIMITS.bodyMaxLength}`}>
+        <Field label="Texto principal (Corpo)" counter={`${value.body.length}/${INTERACTIVE_LIMITS.bodyMaxLength}`}>
           <Textarea
             value={value.body}
             maxLength={INTERACTIVE_LIMITS.bodyMaxLength}
             onChange={(e) => setField({ body: e.target.value })}
-            placeholder="What the customer reads above the options"
+            placeholder="Texto que o cliente lê antes das opções"
             className="min-h-20 bg-muted text-foreground"
           />
         </Field>
 
         <div className="grid grid-cols-2 gap-2">
           <Field
-            label="Header (optional)"
+            label="Cabeçalho (opcional)"
             counter={`${(value.header ?? "").length}/${INTERACTIVE_LIMITS.headerTextMaxLength}`}
           >
             <Input
@@ -127,7 +108,7 @@ export function InteractiveBuilder({
             />
           </Field>
           <Field
-            label="Footer (optional)"
+            label="Rodapé (opcional)"
             counter={`${(value.footer ?? "").length}/${INTERACTIVE_LIMITS.footerMaxLength}`}
           >
             <Input
@@ -152,7 +133,7 @@ export function InteractiveBuilder({
             onChange={(e) => setAdvanced(e.target.checked)}
             className="h-3.5 w-3.5 accent-primary"
           />
-          Show reply IDs (advanced)
+          Mostrar IDs de resposta (avançado)
         </label>
 
         {!validation.ok && (
@@ -163,7 +144,7 @@ export function InteractiveBuilder({
       {showPreview && (
         <div className="flex shrink-0 flex-col gap-1.5 md:w-[280px]">
           <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Preview
+            Pré-visualização
           </span>
           <div className="rounded-lg bg-muted/40 p-3">
             <InteractivePreview payload={value} />
@@ -173,10 +154,6 @@ export function InteractiveBuilder({
     </div>
   );
 }
-
-// ------------------------------------------------------------
-// Buttons editor
-// ------------------------------------------------------------
 
 function ButtonsEditor({
   value,
@@ -207,7 +184,7 @@ function ButtonsEditor({
   return (
     <div>
       <label className="mb-2 block text-xs text-muted-foreground">
-        Buttons ({buttons.length}/{INTERACTIVE_LIMITS.maxButtons})
+        Botões ({buttons.length}/{INTERACTIVE_LIMITS.maxButtons})
       </label>
       <div className="flex flex-col gap-2">
         {buttons.map((b, i) => (
@@ -227,7 +204,7 @@ function ButtonsEditor({
               value={b.title}
               maxLength={INTERACTIVE_LIMITS.buttonTitleMaxLength}
               onChange={(e) => update(i, { title: e.target.value })}
-              placeholder="Button label"
+              placeholder="Rótulo do botão"
               className="flex-1 bg-muted"
             />
             <span className="w-10 shrink-0 text-right text-[10px] text-muted-foreground">
@@ -249,16 +226,12 @@ function ButtonsEditor({
       {buttons.length < INTERACTIVE_LIMITS.maxButtons && (
         <Button variant="ghost" size="sm" onClick={add} className="mt-2">
           <Plus className="h-3.5 w-3.5" />
-          Add button
+          Adicionar botão
         </Button>
       )}
     </div>
   );
 }
-
-// ------------------------------------------------------------
-// List editor
-// ------------------------------------------------------------
 
 function ListEditor({
   value,
@@ -320,7 +293,7 @@ function ListEditor({
 
   return (
     <div className="flex flex-col gap-3">
-      <Field label="List button label" counter={`${value.button_label.length}/${INTERACTIVE_LIMITS.buttonTitleMaxLength}`}>
+      <Field label="Rótulo do botão da lista" counter={`${value.button_label.length}/${INTERACTIVE_LIMITS.buttonTitleMaxLength}`}>
         <Input
           value={value.button_label}
           maxLength={INTERACTIVE_LIMITS.buttonTitleMaxLength}
@@ -330,7 +303,7 @@ function ListEditor({
       </Field>
 
       <label className="block text-xs text-muted-foreground">
-        Rows ({totalRows}/{INTERACTIVE_LIMITS.maxListRowsTotal})
+        Opções ({totalRows}/{INTERACTIVE_LIMITS.maxListRowsTotal})
       </label>
 
       {sections.map((section, sIdx) => (
@@ -339,7 +312,7 @@ function ListEditor({
             <Input
               value={section.title ?? ""}
               onChange={(e) => updateSection(sIdx, { title: e.target.value })}
-              placeholder="Section title (optional)"
+              placeholder="Título da seção (opcional)"
               className="flex-1 bg-muted text-xs"
             />
             {sections.length > 1 && (
@@ -371,7 +344,7 @@ function ListEditor({
                     value={row.title}
                     maxLength={INTERACTIVE_LIMITS.listRowTitleMaxLength}
                     onChange={(e) => updateRow(sIdx, rIdx, { title: e.target.value })}
-                    placeholder="Row title"
+                    placeholder="Título da opção"
                     className="flex-1 bg-muted"
                   />
                   <span className="w-10 shrink-0 text-right text-[10px] text-muted-foreground">
@@ -392,7 +365,7 @@ function ListEditor({
                   value={row.description ?? ""}
                   maxLength={INTERACTIVE_LIMITS.listRowDescriptionMaxLength}
                   onChange={(e) => updateRow(sIdx, rIdx, { description: e.target.value })}
-                  placeholder="Description (optional)"
+                  placeholder="Descrição (opcional)"
                   className="mt-2 bg-muted text-xs"
                 />
               </div>
@@ -401,7 +374,7 @@ function ListEditor({
           {totalRows < INTERACTIVE_LIMITS.maxListRowsTotal && (
             <Button variant="ghost" size="sm" onClick={() => addRow(sIdx)} className="mt-2">
               <Plus className="h-3.5 w-3.5" />
-              Add row
+              Adicionar opção
             </Button>
           )}
         </div>
@@ -411,16 +384,12 @@ function ListEditor({
         totalRows < INTERACTIVE_LIMITS.maxListRowsTotal && (
           <Button variant="ghost" size="sm" onClick={addSection}>
             <Plus className="h-3.5 w-3.5" />
-            Add section
+            Adicionar seção
           </Button>
         )}
     </div>
   );
 }
-
-// ------------------------------------------------------------
-// Small presentational helpers
-// ------------------------------------------------------------
 
 function KindButton({
   active,
