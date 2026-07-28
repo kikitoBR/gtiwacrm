@@ -125,9 +125,14 @@ export async function POST(request: Request) {
         }
       }
 
-      const contactName = explicitGroupName || (isGroup ? `Grupo ${key.remoteJid.split('@')[0]}` : item.pushName || senderPhone)
-      const isExplicitName = Boolean(explicitGroupName) || !isGroup
       const fromMe = key.fromMe === true
+      // When message is sent from host account (fromMe === true), item.pushName is the host account's name.
+      // Do NOT use host pushName as the recipient contact's name!
+      const rawPushName = item.pushName || data?.pushName
+      const pushNameForContact = fromMe ? undefined : (typeof rawPushName === 'string' ? rawPushName : undefined)
+
+      const contactName = explicitGroupName || (isGroup ? `Grupo ${key.remoteJid.split('@')[0]}` : pushNameForContact || senderPhone)
+      const isExplicitName = Boolean(explicitGroupName) || (!isGroup && !fromMe && Boolean(pushNameForContact))
 
       // Encontrar ou criar contato no banco de dados
       const contactOutcome = await findOrCreateContact(

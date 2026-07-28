@@ -91,7 +91,10 @@ export async function resolveConversationByPhone(
   const existing = await findExistingContact(db, accountId, sanitized);
   if (existing) {
     contactId = existing.id;
-    if (name && name !== existing.name) {
+    const existingName = existing.name || '';
+    const isExistingPlaceholder = !existingName || existingName.startsWith('+') || /^\d+$/.test(existingName.replace(/\D/g, ''));
+    const isNewNameGeneric = !name || name.startsWith('+') || name.includes('Gerência de tecnologia');
+    if (name && name !== existing.name && (isExistingPlaceholder || !isNewNameGeneric)) {
       await db
         .from('contacts')
         .update({ name, updated_at: new Date().toISOString() })
