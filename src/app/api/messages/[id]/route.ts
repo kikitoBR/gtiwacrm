@@ -30,17 +30,25 @@ export async function DELETE(
     .from('messages')
     .select('*, conversations(account_id, contact_id, contacts(phone))')
     .eq('id', id)
-    .single()
+    .maybeSingle()
 
   if (!msg) {
     return NextResponse.json({ error: 'Message not found' }, { status: 404 })
   }
 
-  if (msg.whatsapp_message_id && msg.conversations?.account_id) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const conv = Array.isArray(msg?.conversations) ? msg.conversations[0] : (msg?.conversations as any)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contact = Array.isArray(conv?.contacts) ? conv.contacts[0] : (conv?.contacts as any)
+  const phone = contact?.phone
+  const accountId = conv?.account_id
+  const waMsgId = msg?.whatsapp_message_id || (msg as any)?.message_id
+
+  if (waMsgId && accountId && phone) {
     const { data: config } = await admin
       .from('whatsapp_config')
       .select('*')
-      .eq('account_id', msg.conversations.account_id)
+      .eq('account_id', accountId)
       .maybeSingle()
 
     if (config) {
@@ -49,14 +57,11 @@ export async function DELETE(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const provAny = provider as any
         if (typeof provAny.deleteMessage === 'function') {
-          const phone = msg.conversations.contacts?.phone
-          if (phone) {
-            await provAny.deleteMessage({
-              to: phone,
-              messageId: msg.whatsapp_message_id,
-              fromMe: msg.sender_type === 'agent' || msg.sender_type === 'bot',
-            })
-          }
+          await provAny.deleteMessage({
+            to: phone,
+            messageId: waMsgId,
+            fromMe: msg.sender_type === 'agent' || msg.sender_type === 'bot',
+          })
         }
       } catch (err) {
         console.warn('Failed to delete message on WhatsApp provider:', err)
@@ -97,17 +102,25 @@ export async function PATCH(
     .from('messages')
     .select('*, conversations(account_id, contact_id, contacts(phone))')
     .eq('id', id)
-    .single()
+    .maybeSingle()
 
   if (!msg) {
     return NextResponse.json({ error: 'Message not found' }, { status: 404 })
   }
 
-  if (msg.whatsapp_message_id && msg.conversations?.account_id) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const conv = Array.isArray(msg?.conversations) ? msg.conversations[0] : (msg?.conversations as any)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contact = Array.isArray(conv?.contacts) ? conv.contacts[0] : (conv?.contacts as any)
+  const phone = contact?.phone
+  const accountId = conv?.account_id
+  const waMsgId = msg?.whatsapp_message_id || (msg as any)?.message_id
+
+  if (waMsgId && accountId && phone) {
     const { data: config } = await admin
       .from('whatsapp_config')
       .select('*')
-      .eq('account_id', msg.conversations.account_id)
+      .eq('account_id', accountId)
       .maybeSingle()
 
     if (config) {
@@ -116,15 +129,12 @@ export async function PATCH(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const provAny = provider as any
         if (typeof provAny.editMessage === 'function') {
-          const phone = msg.conversations.contacts?.phone
-          if (phone) {
-            await provAny.editMessage({
-              to: phone,
-              messageId: msg.whatsapp_message_id,
-              newText: newText.trim(),
-              fromMe: msg.sender_type === 'agent' || msg.sender_type === 'bot',
-            })
-          }
+          await provAny.editMessage({
+            to: phone,
+            messageId: waMsgId,
+            newText: newText.trim(),
+            fromMe: msg.sender_type === 'agent' || msg.sender_type === 'bot',
+          })
         }
       } catch (err) {
         console.warn('Failed to edit message on WhatsApp provider:', err)

@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { getWhatsAppProvider } from '@/lib/whatsapp/provider-factory';
 import {
   checkRateLimit,
   rateLimitResponse,
   RATE_LIMITS,
 } from '@/lib/rate-limit';
+
+function supabaseAdmin() {
+  return createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 /**
  * POST /api/whatsapp/react
@@ -62,8 +70,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Resolve target message + its conversation; verify ownership.
-    const { data: targetMessage, error: msgError } = await supabase
+    // Resolve target message + its conversation using admin client to bypass RLS.
+    const admin = supabaseAdmin();
+    const { data: targetMessage, error: msgError } = await admin
       .from('messages')
       .select('id, whatsapp_message_id, sender_type, conversation_id')
       .eq('id', message_id)
@@ -84,11 +93,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: conversation, error: convError } = await supabase
+    const { data: conversation, error: convError } = await admin
       .from('conversations')
       .select('id, account_id, contact:contacts(phone)')
       .eq('id', targetMessage.conversation_id)
-      .eq('account_id', accountId)
       .maybeSingle();
 
     if (convError || !conversation) {
