@@ -203,24 +203,51 @@ export async function POST(request: Request) {
       }
 
       // Check for EDITED message protocol event in messages.upsert
-      const editedPayload =
-        msg?.protocolMessage?.editedMessage ||
-        msg?.editedMessage?.message ||
-        msg?.editedMessage
-      const targetWaMsgId =
-        msg?.protocolMessage?.key?.id ||
-        msg?.editedMessage?.key?.id
+      const candidates = [
+        msg?.protocolMessage,
+        msg?.editedMessage,
+        msg?.message?.protocolMessage,
+        msg?.message?.editedMessage,
+        item?.message?.protocolMessage,
+        item?.message?.editedMessage,
+        item?.protocolMessage,
+        item?.editedMessage,
+      ].filter(Boolean)
 
-      if (editedPayload || (msg?.protocolMessage && (msg.protocolMessage.type === 14 || msg.protocolMessage.type === 'EDITED_MESSAGE'))) {
-        const newEditedText =
-          editedPayload?.conversation ||
-          editedPayload?.extendedTextMessage?.text ||
-          editedPayload?.text ||
-          ''
+      const isEditEvent = candidates.some(
+        (c: any) =>
+          c.type === 14 ||
+          c.type === 'EDITED_MESSAGE' ||
+          c.editedMessage ||
+          c.message
+      )
 
-        const editTargetId = targetWaMsgId || key.id
+      if (isEditEvent) {
+        let targetId: string | null = null
+        let newText: string | null = null
 
-        if (editTargetId && newEditedText) {
+        for (const c of candidates) {
+          const keyId = c.key?.id || c.editedMessage?.key?.id
+          if (keyId) targetId = keyId
+
+          const textPayload =
+            c.editedMessage?.message ||
+            c.editedMessage ||
+            c.message?.message ||
+            c.message
+
+          const extractedText =
+            textPayload?.conversation ||
+            textPayload?.extendedTextMessage?.text ||
+            textPayload?.text ||
+            (typeof textPayload === 'string' ? textPayload : null)
+
+          if (extractedText) newText = extractedText
+        }
+
+        const editTargetId = targetId || key.id
+
+        if (editTargetId) {
           const { data: existingMsg } = await supabaseAdmin()
             .from('messages')
             .select('id, content_text')
@@ -228,27 +255,59 @@ export async function POST(request: Request) {
             .maybeSingle()
 
           if (existingMsg) {
-            let finalEditedText = newEditedText
+            let finalEditedText = newText || existingMsg.content_text || ''
             if (isGroup && !fromMe && existingMsg.content_text) {
               const { participantName, participantPhone } = parseGroupMessage(existingMsg.content_text)
-              if (participantName) {
+              if (participantName && newText) {
                 const prefix = participantPhone ? `*${participantName}|${participantPhone}:*` : `*${participantName}:*`
-                finalEditedText = `${prefix} ${newEditedText}`
+                finalEditedText = `${prefix} ${newText}`
               }
             }
 
-            await supabaseAdmin()
+            if (newText) {
+              await supabaseAdmin()
+                .from('messages')
+                .update({
+                  content_text: finalEditedText,
+                  is_edited: true,
+                  status: 'edited',
+                })
+                .eq('id', existingMsg.id)
+            }
+          } else {
+            // Target message not found by exact ID, attempt updating latest message in conversation
+            const { data: latestMsg } = await supabaseAdmin()
               .from('messages')
-              .update({
-                content_text: finalEditedText,
-                is_edited: true,
-                status: 'edited',
-              })
-              .eq('id', existingMsg.id)
+              .select('id, content_text')
+              .eq('conversation_id', conversation.id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle()
 
-            return NextResponse.json({ status: 'success', edited: true }, { status: 200 })
+            if (latestMsg && newText) {
+              let finalEditedText = newText
+              if (isGroup && !fromMe && latestMsg.content_text) {
+                const { participantName, participantPhone } = parseGroupMessage(latestMsg.content_text)
+                if (participantName) {
+                  const prefix = participantPhone ? `*${participantName}|${participantPhone}:*` : `*${participantName}:*`
+                  finalEditedText = `${prefix} ${newText}`
+                }
+              }
+
+              await supabaseAdmin()
+                .from('messages')
+                .update({
+                  content_text: finalEditedText,
+                  is_edited: true,
+                  status: 'edited',
+                })
+                .eq('id', latestMsg.id)
+            }
           }
         }
+
+        // CRITICAL: Always return success for edit events so we NEVER fall through to insert a blank message!
+        return NextResponse.json({ status: 'success', edited: true }, { status: 200 })
       }
 
       // Parser de tipo de mensagem e conteúdo
