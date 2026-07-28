@@ -873,6 +873,52 @@ export function MessageThread({
     [conversation, user?.id],
   );
 
+  const handleDeleteMessage = useCallback(
+    async (messageId: string) => {
+      onMessagesLoaded(messages.filter((m) => m.id !== messageId));
+      try {
+        const res = await fetch(`/api/messages/${messageId}`, {
+          method: "DELETE",
+        });
+        if (res.ok) {
+          toast.success("Mensagem apagada com sucesso");
+        } else {
+          toast.error("Erro ao apagar mensagem");
+          onRefresh?.();
+        }
+      } catch {
+        toast.error("Falha ao se comunicar com o servidor");
+        onRefresh?.();
+      }
+    },
+    [messages, onMessagesLoaded, onRefresh]
+  );
+
+  const handleEditMessage = useCallback(
+    async (messageId: string, newText: string) => {
+      onMessagesLoaded(
+        messages.map((m) => (m.id === messageId ? { ...m, content_text: newText } : m))
+      );
+      try {
+        const res = await fetch(`/api/messages/${messageId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ newText }),
+        });
+        if (res.ok) {
+          toast.success("Mensagem editada com sucesso");
+        } else {
+          toast.error("Erro ao editar mensagem");
+          onRefresh?.();
+        }
+      } catch {
+        toast.error("Falha ao se comunicar com o servidor");
+        onRefresh?.();
+      }
+    },
+    [messages, onMessagesLoaded, onRefresh]
+  );
+
   const handleAssignChange = useCallback(
     async (agentId: string | null) => {
       if (!conversation) return;
@@ -1204,6 +1250,8 @@ export function MessageThread({
                         onReact={(emoji) => {
                           if (emoji) void postReaction(msg.id, emoji);
                         }}
+                        onDelete={handleDeleteMessage}
+                        onEdit={handleEditMessage}
                       >
                         <MessageBubble
                           message={msg}

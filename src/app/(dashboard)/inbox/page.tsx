@@ -280,7 +280,7 @@ function InboxPageInner() {
             (tId) => (
               <div
                 onClick={() => {
-                  if (targetConv) setActiveConversation(targetConv);
+                  if (targetConv) handleSelectConversation(targetConv);
                   toast.dismiss(tId);
                 }}
                 style={{

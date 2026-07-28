@@ -275,6 +275,52 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     return { messageId }
   }
 
+  async deleteMessage(args: {
+    to: string
+    messageId: string
+    fromMe?: boolean
+  }): Promise<{ success: boolean }> {
+    const toPhone = this.formatPhone(args.to)
+    try {
+      await this.request('/message/delete', {
+        status: 'REVOKE',
+        key: {
+          remoteJid: toPhone,
+          fromMe: args.fromMe ?? true,
+          id: args.messageId,
+        },
+      })
+      return { success: true }
+    } catch (err) {
+      console.warn('[Evolution API] deleteMessage failed:', err)
+      return { success: false }
+    }
+  }
+
+  async editMessage(args: {
+    to: string
+    messageId: string
+    newText: string
+    fromMe?: boolean
+  }): Promise<{ success: boolean }> {
+    const toPhone = this.formatPhone(args.to)
+    try {
+      await this.request('/message/edit', {
+        number: toPhone,
+        text: args.newText,
+        key: {
+          id: args.messageId,
+          fromMe: args.fromMe ?? true,
+          remoteJid: toPhone,
+        },
+      })
+      return { success: true }
+    } catch (err) {
+      console.warn('[Evolution API] editMessage failed:', err)
+      return { success: false }
+    }
+  }
+
   async sendInteractiveButtons(args: {
     to: string
     bodyText: string
