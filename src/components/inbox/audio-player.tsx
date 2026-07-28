@@ -1,13 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Play, Pause, Mic, ImageOff } from "lucide-react";
+import { Play, Pause, ImageOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface AudioPlayerProps {
   url: string;
-  avatarUrl?: string | null;
-  senderName?: string | null;
   isAgent?: boolean;
   className?: string;
 }
@@ -31,8 +29,6 @@ function generateWaveformBars(seed: string, count = 36): number[] {
 
 export function AudioPlayer({
   url,
-  avatarUrl,
-  senderName,
   isAgent = false,
   className,
 }: AudioPlayerProps) {
@@ -131,7 +127,7 @@ export function AudioPlayer({
   return (
     <div
       className={cn(
-        "flex flex-col gap-1 rounded-xl p-2.5 min-w-[250px] max-w-[310px] select-none",
+        "flex flex-col gap-1 rounded-xl p-2.5 min-w-[240px] max-w-[300px] select-none",
         isAgent
           ? "bg-primary text-primary-foreground"
           : "bg-muted/80 text-foreground border border-border/40",
@@ -163,31 +159,6 @@ export function AudioPlayer({
       )}
 
       <div className="flex items-center gap-3">
-        {/* Avatar with Mic Badge */}
-        <div className="relative shrink-0">
-          <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-muted-foreground/20 font-bold shadow-sm">
-            {avatarUrl ? (
-              <img
-                src={avatarUrl}
-                alt={senderName || "Avatar"}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <span className="text-sm font-semibold">
-                {(senderName || "A").charAt(0).toUpperCase()}
-              </span>
-            )}
-          </div>
-          <div
-            className={cn(
-              "absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full shadow-sm text-white",
-              isAgent ? "bg-emerald-500" : "bg-emerald-600"
-            )}
-          >
-            <Mic className="h-2.5 w-2.5" />
-          </div>
-        </div>
-
         {/* Play/Pause Button */}
         <button
           type="button"

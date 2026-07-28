@@ -366,8 +366,6 @@ function MessageContent({
           {message.media_url ? (
             <AudioPlayer
               url={message.media_url}
-              avatarUrl={avatarUrl}
-              senderName={participantName || (isAgent ? "Você" : "Contato")}
               isAgent={isAgent}
             />
           ) : (
@@ -478,8 +476,8 @@ export function MessageBubble({
     ? parseGroupMessage(message.content_text)
     : { participantName: null, participantPhone: null, cleanText: message.content_text || "" };
 
-  const participantName = parsed.participantName;
-  const participantPhone = parsed.participantPhone;
+  const participantName = parsed.participantName || participantContact?.name || null;
+  const participantPhone = parsed.participantPhone || participantContact?.phone || null;
   const displayMessage: Message = {
     ...message,
     content_text: parsed.cleanText,
