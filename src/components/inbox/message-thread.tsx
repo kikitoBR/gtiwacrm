@@ -1255,9 +1255,9 @@ export function MessageThread({
                          ?? (pPhone ? participantsMap.get(pPhone.toLowerCase()) : null)
                          ?? null)
                       : null;
-                    if (isGroup && msg.sender_type === "customer" && !participantContact && participantsMap.size > 0) {
-                      participantContact = Array.from(participantsMap.values())[0] || null;
-                    }
+                    // NOTE: do NOT fall back to participantsMap.values()[0] here —
+                    // that causes every unmatched participant to show the same
+                    // avatar/name (the first map entry, e.g. the account owner).
 
                     return (
                       <MessageActions
