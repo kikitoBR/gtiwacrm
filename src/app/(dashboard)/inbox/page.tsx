@@ -349,22 +349,22 @@ function InboxPageInner() {
         // the preview and triggering a hydrate — see the comment on
         // knownConvIdsRef for why a closure flag inside the updater would
         // always read false here.
+        // Update conversation list preview and move updated conversation to top
         if (knownConvIdsRef.current.has(newMsg.conversation_id)) {
-          setConversations((prev) =>
-            prev.map((c) =>
-              c.id === newMsg.conversation_id
-                ? {
-                    ...c,
-                    last_message_text: newMsg.content_text ?? "",
-                    last_message_at: newMsg.created_at,
-                    unread_count:
-                      activeConversation?.id === newMsg.conversation_id
-                        ? 0
-                        : c.unread_count + 1,
-                  }
-                : c,
-            ),
-          );
+          setConversations((prev) => {
+            const target = prev.find((c) => c.id === newMsg.conversation_id);
+            if (!target) return prev;
+            const updated: Conversation = {
+              ...target,
+              last_message_text: newMsg.content_text ?? target.last_message_text,
+              last_message_at: newMsg.created_at || new Date().toISOString(),
+              unread_count:
+                activeConversation?.id === newMsg.conversation_id
+                  ? 0
+                  : target.unread_count + 1,
+            };
+            return [updated, ...prev.filter((c) => c.id !== newMsg.conversation_id)];
+          });
         } else {
           // First time we're seeing this conv: the conv-INSERT event
           // hasn't landed yet, or was missed. Hydrate from the DB so
@@ -417,17 +417,16 @@ function InboxPageInner() {
           // back on for the ~100ms it takes for the reset effect's server
           // UPDATE to round-trip. Non-active convs take the value as-is.
           const isActive = activeConversation?.id === conv.id;
-          setConversations((prev) =>
-            prev.map((c) =>
-              c.id === conv.id
-                ? {
-                    ...c,
-                    ...conv,
-                    unread_count: isActive ? 0 : conv.unread_count,
-                  }
-                : c,
-            ),
-          );
+          setConversations((prev) => {
+            const target = prev.find((c) => c.id === conv.id);
+            if (!target) return prev;
+            const updated: Conversation = {
+              ...target,
+              ...conv,
+              unread_count: isActive ? 0 : conv.unread_count,
+            };
+            return [updated, ...prev.filter((c) => c.id !== conv.id)];
+          });
         } else {
           // UPDATE arrived before the INSERT (or after a missed INSERT)
           // — fetch the row so it surfaces with its contact joined. The
@@ -604,6 +603,16 @@ function InboxPageInner() {
     setMessages((prev) => {
       if (prev.some((m) => m.id === msg.id)) return prev;
       return [...prev, msg];
+    });
+    setConversations((prev) => {
+      const target = prev.find((c) => c.id === msg.conversation_id);
+      if (!target) return prev;
+      const updated: Conversation = {
+        ...target,
+        last_message_text: msg.content_text ?? target.last_message_text,
+        last_message_at: msg.created_at || new Date().toISOString(),
+      };
+      return [updated, ...prev.filter((c) => c.id !== msg.conversation_id)];
     });
   }, []);
 

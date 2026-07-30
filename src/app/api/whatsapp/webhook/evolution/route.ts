@@ -56,6 +56,33 @@ async function processEditedMessage(
   let newText: string | null = null
 
   for (const c of candidates) {
+    // Check if this is a REVOKE / DELETE protocol message
+    if (c.type === 0 || c.type === 'REVOKE') {
+      const revokeTargetId = c.key?.id || key?.id || dataOrUpdate?.key?.id || itemObj?.key?.id
+      if (revokeTargetId) {
+        const { data: existingMsg } = await supabaseAdmin()
+          .from('messages')
+          .select('id, sender_type')
+          .or(`message_id.eq.${revokeTargetId},id.eq.${revokeTargetId}`)
+          .maybeSingle()
+
+        if (existingMsg) {
+          const isAgent = existingMsg.sender_type === 'agent' || existingMsg.sender_type === 'bot'
+          const deletedText = isAgent ? '🚫 Você apagou esta mensagem' : '🚫 Esta mensagem foi apagada'
+
+          await supabaseAdmin()
+            .from('messages')
+            .update({
+              content_text: deletedText,
+              status: 'deleted',
+            })
+            .eq('id', existingMsg.id)
+
+          return true
+        }
+      }
+    }
+
     const keyId = c.key?.id || c.editedMessage?.key?.id
     if (keyId) targetId = keyId
 
@@ -320,10 +347,11 @@ export async function POST(request: Request) {
         } else if (msg.audioMessage) {
           contentType = 'audio'
           mediaUrl = msg.audioMessage.url || null
-        } else if (msg.documentMessage) {
+        } else if (msg.documentMessage || msg.documentWithCaptionMessage?.message?.documentMessage) {
+          const doc = msg.documentMessage || msg.documentWithCaptionMessage?.message?.documentMessage
           contentType = 'document'
-          contentText = msg.documentMessage.title || msg.documentMessage.caption || ''
-          mediaUrl = msg.documentMessage.url || null
+          contentText = doc.title || doc.fileName || doc.caption || ''
+          mediaUrl = doc.url || null
         } else if (msg.buttonsResponseMessage) {
           contentType = 'interactive'
           contentText = msg.buttonsResponseMessage.selectedDisplayText || ''
@@ -337,6 +365,7 @@ export async function POST(request: Request) {
 
       // Se for mídia (imagem, vídeo, áudio, documento), baixa via Evolution API / base64 e salva no Supabase Storage
       if (contentType === 'image' || contentType === 'video' || contentType === 'audio' || contentType === 'document') {
+        const docMsg = msg?.documentMessage || msg?.documentWithCaptionMessage?.message?.documentMessage
         let base64String =
           msg?.base64 ||
           item?.base64 ||
@@ -344,10 +373,10 @@ export async function POST(request: Request) {
           msg?.imageMessage?.base64 ||
           msg?.videoMessage?.base64 ||
           msg?.audioMessage?.base64 ||
-          msg?.documentMessage?.base64 ||
+          docMsg?.base64 ||
           null
 
-        const docFilename = msg?.documentMessage?.title || msg?.documentMessage?.fileName || undefined
+        const docFilename = docMsg?.title || docMsg?.fileName || undefined
 
         if (!base64String && config.evolution_api_url && config.evolution_api_key) {
           try {

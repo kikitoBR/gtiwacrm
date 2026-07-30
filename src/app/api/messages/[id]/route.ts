@@ -131,17 +131,17 @@ export async function DELETE(
   const isAgent = msg.sender_type === 'agent' || msg.sender_type === 'bot'
   const deletedText = isAgent ? '🚫 Você apagou esta mensagem' : '🚫 Esta mensagem foi apagada'
 
-  // Soft delete: update content_text. Try admin first (bypasses RLS), fallback to session client.
+  // Soft delete: update content_text and status. Try admin first (bypasses RLS), fallback to session client.
   let updateError = null
   const { error: adminErr } = await admin
     .from('messages')
-    .update({ content_text: deletedText })
+    .update({ content_text: deletedText, status: 'deleted' })
     .eq('id', id)
 
   if (adminErr) {
     const { error: sessErr } = await supabase
       .from('messages')
-      .update({ content_text: deletedText })
+      .update({ content_text: deletedText, status: 'deleted' })
       .eq('id', id)
     updateError = sessErr
   }
