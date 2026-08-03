@@ -173,9 +173,15 @@ export async function POST(request: Request) {
     }
 
     // ==========================================
-    // 1) EVENTO: messages.upsert
+    // 1) EVENTO: messages.upsert / MESSAGES_UPSERT / MESSAGES_SET
     // ==========================================
-    if (event === 'messages.upsert') {
+    if (
+      event === 'messages.upsert' ||
+      event === 'MESSAGES_UPSERT' ||
+      event === 'messages.set' ||
+      event === 'MESSAGES_SET' ||
+      event === 'SEND_MESSAGE'
+    ) {
       // Normalizar payload (pode vir como objeto unico, array em data ou array em data.messages)
       let item = data
       if (Array.isArray(data)) {
@@ -325,41 +331,80 @@ export async function POST(request: Request) {
         return NextResponse.json({ status: 'success', edited: true }, { status: 200 })
       }
 
-      // Parser de tipo de mensagem e conteúdo
+      // Parser de tipo de mensagem e conteúdo (unwrap de containers como ephemeral, viewOnce, etc.)
       let contentType = 'text'
       let contentText = ''
       let mediaUrl = null
       let interactiveReplyId = null
 
-      if (msg) {
-        if (msg.conversation) {
-          contentText = msg.conversation
-        } else if (msg.extendedTextMessage?.text) {
-          contentText = msg.extendedTextMessage.text
-        } else if (msg.imageMessage) {
+      // Unwrap nested message wrappers (Disappearing messages, View Once, Document wrappers)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let innerMsg: any = msg
+      while (innerMsg) {
+        if (innerMsg.ephemeralMessage?.message) {
+          innerMsg = innerMsg.ephemeralMessage.message
+        } else if (innerMsg.viewOnceMessage?.message) {
+          innerMsg = innerMsg.viewOnceMessage.message
+        } else if (innerMsg.viewOnceMessageV2?.message) {
+          innerMsg = innerMsg.viewOnceMessageV2.message
+        } else if (innerMsg.documentWithCaptionMessage?.message) {
+          innerMsg = innerMsg.documentWithCaptionMessage.message
+        } else {
+          break
+        }
+      }
+
+      if (innerMsg) {
+        if (innerMsg.conversation) {
+          contentText = innerMsg.conversation
+        } else if (innerMsg.extendedTextMessage?.text) {
+          contentText = innerMsg.extendedTextMessage.text
+        } else if (innerMsg.imageMessage) {
           contentType = 'image'
-          contentText = msg.imageMessage.caption || ''
-          mediaUrl = msg.imageMessage.url || null
-        } else if (msg.videoMessage) {
+          contentText = innerMsg.imageMessage.caption || ''
+          mediaUrl = innerMsg.imageMessage.url || null
+        } else if (innerMsg.videoMessage) {
           contentType = 'video'
-          contentText = msg.videoMessage.caption || ''
-          mediaUrl = msg.videoMessage.url || null
-        } else if (msg.audioMessage) {
+          contentText = innerMsg.videoMessage.caption || ''
+          mediaUrl = innerMsg.videoMessage.url || null
+        } else if (innerMsg.audioMessage) {
           contentType = 'audio'
-          mediaUrl = msg.audioMessage.url || null
-        } else if (msg.documentMessage || msg.documentWithCaptionMessage?.message?.documentMessage) {
-          const doc = msg.documentMessage || msg.documentWithCaptionMessage?.message?.documentMessage
+          mediaUrl = innerMsg.audioMessage.url || null
+        } else if (innerMsg.documentMessage) {
           contentType = 'document'
-          contentText = doc.title || doc.fileName || doc.caption || ''
-          mediaUrl = doc.url || null
-        } else if (msg.buttonsResponseMessage) {
+          contentText = innerMsg.documentMessage.title || innerMsg.documentMessage.fileName || innerMsg.documentMessage.caption || ''
+          mediaUrl = innerMsg.documentMessage.url || null
+        } else if (innerMsg.stickerMessage) {
+          contentType = 'image'
+          contentText = '🎨 [Sticker]'
+          mediaUrl = innerMsg.stickerMessage.url || null
+        } else if (innerMsg.contactMessage) {
+          contentType = 'text'
+          const displayName = innerMsg.contactMessage.displayName || 'Contato'
+          contentText = `📇 Contato compartilhado: ${displayName}`
+        } else if (innerMsg.contactsArrayMessage) {
+          contentType = 'text'
+          contentText = '📇 Contatos compartilhados'
+        } else if (innerMsg.locationMessage || innerMsg.liveLocationMessage) {
+          contentType = 'location'
+          const loc = innerMsg.locationMessage || innerMsg.liveLocationMessage
+          contentText = loc.name || loc.address || '📍 Localização compartilhada'
+        } else if (innerMsg.pollCreationMessage || innerMsg.pollCreationMessageV2 || innerMsg.pollCreationMessageV3) {
+          contentType = 'text'
+          const pollName = innerMsg.pollCreationMessage?.name || innerMsg.pollCreationMessageV2?.name || innerMsg.pollCreationMessageV3?.name || ''
+          contentText = pollName ? `📊 Enquete: ${pollName}` : '📊 Enquete'
+        } else if (innerMsg.buttonsResponseMessage) {
           contentType = 'interactive'
-          contentText = msg.buttonsResponseMessage.selectedDisplayText || ''
-          interactiveReplyId = msg.buttonsResponseMessage.selectedButtonId || null
-        } else if (msg.listResponseMessage) {
+          contentText = innerMsg.buttonsResponseMessage.selectedDisplayText || ''
+          interactiveReplyId = innerMsg.buttonsResponseMessage.selectedButtonId || null
+        } else if (innerMsg.listResponseMessage) {
           contentType = 'interactive'
-          contentText = msg.listResponseMessage.title || ''
-          interactiveReplyId = msg.listResponseMessage.singleSelectReply?.rowId || null
+          contentText = innerMsg.listResponseMessage.title || ''
+          interactiveReplyId = innerMsg.listResponseMessage.singleSelectReply?.rowId || null
+        } else if (innerMsg.templateButtonReplyMessage) {
+          contentType = 'interactive'
+          contentText = innerMsg.templateButtonReplyMessage.selectedDisplayText || ''
+          interactiveReplyId = innerMsg.templateButtonReplyMessage.selectedId || null
         }
       }
 
@@ -500,7 +545,11 @@ export async function POST(request: Request) {
 
       // Ignore messages with no text content and no media attachment (e.g. unparsed edit/protocol frames)
       if (!contentText.trim() && !mediaUrl) {
-        return NextResponse.json({ status: 'ignored', reason: 'Empty content text and no media' }, { status: 200 })
+        if (!fromMe && contentType !== 'text') {
+          contentText = `[${contentType}]`
+        } else {
+          return NextResponse.json({ status: 'ignored', reason: 'Empty content text and no media' }, { status: 200 })
+        }
       }
 
       const messageId = key.id
