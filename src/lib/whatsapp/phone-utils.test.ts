@@ -61,6 +61,21 @@ describe("phonesMatch", () => {
     expect(phonesMatch("+370 6 394 9836", "37063949836")).toBe(true);
     expect(phonesMatch("(415) 555-1212", "+1 415-555-1212")).toBe(true);
   });
+
+  it("handles Brazilian numbers with 9th digit, country codes, and area codes", () => {
+    // With/without +55 and with/without formatting
+    expect(phonesMatch("(11) 98765-4321", "5511987654321")).toBe(true);
+    expect(phonesMatch("+55 (11) 98765-4321", "5511987654321")).toBe(true);
+
+    // 9th digit variant (12-digit without 9 vs 13-digit with 9)
+    expect(phonesMatch("+55 (11) 8765-4321", "5511987654321")).toBe(true);
+    expect(phonesMatch("551187654321", "5511987654321")).toBe(true);
+
+    // Conflicting DDDs must NOT match even if last 8 digits are identical
+    expect(phonesMatch("(21) 98765-4321", "5511987654321")).toBe(false);
+    expect(phonesMatch("5521987654321", "5511987654321")).toBe(false);
+    expect(phonesMatch("552187654321", "5511987654321")).toBe(false);
+  });
 });
 
 describe("isValidE164", () => {

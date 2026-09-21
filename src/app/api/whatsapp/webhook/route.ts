@@ -2,7 +2,7 @@ import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
-import { normalizePhone } from '@/lib/whatsapp/phone-utils'
+import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
@@ -687,7 +687,7 @@ async function processMessage(
     return
   }
 
-  // Update conversation
+  // Update conversation (and reopen if previously closed)
   const { error: convError } = await supabaseAdmin()
     .from('conversations')
     .update({
@@ -695,6 +695,7 @@ async function processMessage(
       last_message_at: new Date().toISOString(),
       unread_count: (conversation.unread_count || 0) + 1,
       updated_at: new Date().toISOString(),
+      status: 'open',
     })
     .eq('id', conversation.id)
 
@@ -1056,6 +1057,30 @@ export async function findOrCreateContact(
     if (isUniqueViolation(createError)) {
       const raced = await findExistingContact(supabaseAdmin(), accountId, phone)
       if (raced) return { contact: raced, wasCreated: false }
+
+      // Direct fallback by normalized phone or suffix in case formatting/race caused mismatch
+      const cleanDigits = phone.replace(/\D/g, '')
+      if (cleanDigits) {
+        const { data: fallbackContact } = await supabaseAdmin()
+          .from('contacts')
+          .select('*')
+          .eq('account_id', accountId)
+          .eq('phone_normalized', cleanDigits)
+          .maybeSingle()
+        if (fallbackContact) return { contact: fallbackContact, wasCreated: false }
+
+        const suffix = cleanDigits.length >= 8 ? cleanDigits.slice(-8) : cleanDigits
+        const { data: fallbackList } = await supabaseAdmin()
+          .from('contacts')
+          .select('*')
+          .eq('account_id', accountId)
+          .or(`phone_normalized.like.%${suffix},phone.like.%${suffix}`)
+        if (fallbackList && fallbackList.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const match = fallbackList.find((c: any) => phonesMatch(c.phone, phone)) || fallbackList[0]
+          if (match) return { contact: match, wasCreated: false }
+        }
+      }
     }
     console.error('Error creating contact:', createError)
     return null

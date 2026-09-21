@@ -619,7 +619,7 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: 'Failed to insert message' }, { status: 200 })
         }
 
-        // Atualizar última mensagem na conversa
+        // Atualizar última mensagem na conversa (e reabrir se estava fechada)
         await supabaseAdmin()
           .from('conversations')
           .update({
@@ -627,6 +627,7 @@ export async function POST(request: Request) {
             last_message_at: new Date().toISOString(),
             unread_count: fromMe ? conversation.unread_count : (conversation.unread_count || 0) + 1,
             updated_at: new Date().toISOString(),
+            ...(fromMe ? {} : { status: 'open' }),
           })
           .eq('id', conversation.id)
 

@@ -19,9 +19,40 @@ export function normalizePhone(phone: string): string {
 }
 
 /**
+ * Detect whether two numbers are Brazilian numbers with differing DDD area codes.
+ * A number is identifiable as Brazilian if it has 12 or 13 digits starting with 55,
+ * or if one starts with 55 and the other is a 10/11-digit Brazilian national number.
+ */
+function areConflictingBrazilNumbers(n1: string, n2: string): boolean {
+  const isBrazil1 = n1.startsWith('55') && (n1.length === 12 || n1.length === 13)
+  const isBrazil2 = n2.startsWith('55') && (n2.length === 12 || n2.length === 13)
+
+  // Both have Brazilian country code 55: compare their DDDs directly
+  if (isBrazil1 && isBrazil2) {
+    const ddd1 = n1.slice(2, 4)
+    const ddd2 = n2.slice(2, 4)
+    return ddd1 !== ddd2
+  }
+
+  // One has 55 and the other is a 10/11-digit national number
+  if (isBrazil1 && (n2.length === 10 || n2.length === 11)) {
+    const ddd1 = n1.slice(2, 4)
+    const ddd2 = n2.slice(0, 2)
+    return ddd1 !== ddd2
+  }
+  if (isBrazil2 && (n1.length === 10 || n1.length === 11)) {
+    const ddd1 = n1.slice(0, 2)
+    const ddd2 = n2.slice(2, 4)
+    return ddd1 !== ddd2
+  }
+
+  return false
+}
+
+/**
  * Compare two phone numbers accounting for trunk prefix differences.
  * e.g. "370063949836" (with trunk 0) matches "37063949836" (without trunk 0)
- * by comparing the last 8 digits.
+ * by comparing the last 8 digits, while ensuring Brazilian DDD area codes match.
  */
 export function phonesMatch(phone1: string, phone2: string): boolean {
   if (phone1.includes('@g.us') || phone2.includes('@g.us')) {
@@ -30,6 +61,12 @@ export function phonesMatch(phone1: string, phone2: string): boolean {
   const n1 = normalizePhone(phone1)
   const n2 = normalizePhone(phone2)
   if (n1 === n2) return true
+
+  // For Brazilian phone numbers, differing area codes (DDDs) never match
+  if (areConflictingBrazilNumbers(n1, n2)) {
+    return false
+  }
+
   if (n1.length >= 8 && n2.length >= 8) {
     return n1.slice(-8) === n2.slice(-8)
   }

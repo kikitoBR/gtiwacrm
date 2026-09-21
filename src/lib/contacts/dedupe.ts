@@ -52,17 +52,52 @@ export async function findExistingContact(
 
   const suffix = normalized.length >= 8 ? normalized.slice(-8) : normalized;
 
-  const { data, error } = await db
+  let candidates: ExistingContact[] = [];
+
+  // Try querying both phone_normalized (unformatted digits) and phone using PostgREST .or()
+  // This ensures contacts formatted with spaces, dashes, or parens (e.g. "+55 (11) 98765-4321")
+  // are properly found even when incoming phone is pure digits ("5511987654321").
+  const query = db
     .from("contacts")
     .select("*")
-    .eq("account_id", accountId)
-    .like("phone", `%${suffix}`);
+    .eq("account_id", accountId);
 
-  if (error || !data) return null;
+  let queryExecuted = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (typeof (query as any).or === "function") {
+    try {
+      const { data, error } = await query.or(
+        `phone_normalized.like.%${suffix},phone.like.%${suffix},phone_normalized.eq.${normalized}`
+      );
+      if (!error && data) {
+        candidates = data as ExistingContact[];
+        queryExecuted = true;
+      }
+    } catch {
+      // Ignore and fallback
+    }
+  }
 
-  return (
-    (data as ExistingContact[]).find((c) => phonesMatch(c.phone, phone)) ?? null
-  );
+  if (!queryExecuted) {
+    const { data, error } = await db
+      .from("contacts")
+      .select("*")
+      .eq("account_id", accountId)
+      .like("phone", `%${suffix}`);
+
+    if (!error && data) {
+      candidates = data as ExistingContact[];
+    }
+  }
+
+  if (candidates.length === 0) return null;
+
+  // 1. Exact normalized match has highest priority
+  const exact = candidates.find((c) => isExactMatch(c, phone));
+  if (exact) return exact;
+
+  // 2. Trunk/prefix tolerance (e.g. Brazilian 9th digit, area codes, trunk prefixes)
+  return candidates.find((c) => phonesMatch(c.phone, phone)) ?? null;
 }
 
 /**

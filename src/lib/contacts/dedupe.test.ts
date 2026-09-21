@@ -67,12 +67,13 @@ describe("dedupeByPhone", () => {
 });
 
 describe("findExistingContact", () => {
-  // Minimal SupabaseClient stub: resolves the .from().select().eq().like()
+  // Minimal SupabaseClient stub: resolves the .from().select().eq().or() / .like()
   // chain to a fixed candidate set.
-  function stubDb(rows: Array<{ id: string; phone: string }>): SupabaseClient {
+  function stubDb(rows: Array<{ id: string; phone: string; phone_normalized?: string }>): SupabaseClient {
     const builder = {
       select: () => builder,
       eq: () => builder,
+      or: () => Promise.resolve({ data: rows, error: null }),
       like: () => Promise.resolve({ data: rows, error: null }),
     };
     return { from: () => builder } as unknown as SupabaseClient;
@@ -82,6 +83,23 @@ describe("findExistingContact", () => {
     const db = stubDb([{ id: "c1", phone: "37063949836" }]);
     const hit = await findExistingContact(db, "acct", "+370 063 949 836");
     expect(hit?.id).toBe("c1");
+  });
+
+  it("matches formatted contacts like (11) 98765-4321 to incoming digits 5511987654321", async () => {
+    const db = stubDb([
+      { id: "c-br", phone: "(11) 98765-4321", phone_normalized: "11987654321" },
+    ]);
+    const hit = await findExistingContact(db, "acct", "5511987654321");
+    expect(hit?.id).toBe("c-br");
+  });
+
+  it("prioritizes exact normalized match over fuzzy match", async () => {
+    const db = stubDb([
+      { id: "fuzzy", phone: "551187654321", phone_normalized: "551187654321" },
+      { id: "exact", phone: "+55 11 98765-4321", phone_normalized: "5511987654321" },
+    ]);
+    const hit = await findExistingContact(db, "acct", "5511987654321");
+    expect(hit?.id).toBe("exact");
   });
 
   it("returns null when no candidate matches", async () => {

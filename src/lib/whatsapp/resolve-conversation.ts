@@ -120,11 +120,23 @@ export async function resolveConversationByPhone(
         if (raced) {
           contactId = raced.id;
         } else {
-          throw new SendMessageError(
-            'db_error',
-            'Failed to create contact',
-            500
-          );
+          // Direct fallback by phone_normalized in case of formatting mismatch
+          const { data: fallback } = await db
+            .from('contacts')
+            .select('id')
+            .eq('account_id', accountId)
+            .eq('phone_normalized', sanitized)
+            .maybeSingle();
+
+          if (fallback) {
+            contactId = fallback.id;
+          } else {
+            throw new SendMessageError(
+              'db_error',
+              'Failed to create contact',
+              500
+            );
+          }
         }
       } else {
         console.error(

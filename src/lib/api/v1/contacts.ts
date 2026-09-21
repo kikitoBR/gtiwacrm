@@ -143,6 +143,14 @@ export async function findOrCreateContact(
     if (isUniqueViolation(error)) {
       const raced = await findExistingContact(db, accountId, sanitized);
       if (raced) return { id: raced.id, created: false };
+
+      const { data: fallback } = await db
+        .from('contacts')
+        .select('id')
+        .eq('account_id', accountId)
+        .eq('phone_normalized', sanitized)
+        .maybeSingle();
+      if (fallback) return { id: fallback.id, created: false };
     }
     console.error('[api/v1/contacts] create error:', error);
     throw new ContactError('Failed to create contact', 500);
