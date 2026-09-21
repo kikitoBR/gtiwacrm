@@ -142,7 +142,7 @@ export function InteractiveBuilder({
       </div>
 
       {showPreview && (
-        <div className="flex shrink-0 flex-col gap-1.5 md:w-[280px]">
+        <div className="flex shrink-0 flex-col gap-1.5 md:w-70">
           <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             Pré-visualização
           </span>

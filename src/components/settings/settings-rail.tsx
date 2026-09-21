@@ -53,7 +53,7 @@ export function SettingsRail({
     <nav
       aria-label="Settings sections"
       className={cn(
-        'flex gap-1 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+        'flex gap-1 overflow-x-auto pb-2 scrollbar-none [&::-webkit-scrollbar]:hidden',
         'border-b border-border',
         'lg:sticky lg:top-0 lg:flex-col lg:overflow-visible lg:border-b-0 lg:pb-0',
       )}

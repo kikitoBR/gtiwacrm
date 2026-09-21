@@ -1006,7 +1006,7 @@ export function MessageThread({
               type="button"
               onClick={onBack}
               aria-label={t("backToConversations")}
-              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
@@ -1026,10 +1026,10 @@ export function MessageThread({
               <img
                 src={contact.avatar_url}
                 alt={displayName}
-                className="h-9 w-9 flex-shrink-0 rounded-full object-cover"
+                className="h-9 w-9 shrink-0 rounded-full object-cover"
               />
             ) : (
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
                 {displayName.charAt(0).toUpperCase()}
               </div>
             )}
@@ -1250,7 +1250,7 @@ export function MessageThread({
                     const { participantName, participantPhone: pPhone } = isGroup && msg.sender_type === "customer"
                       ? parseGroupMessage(msg.content_text)
                       : { participantName: null, participantPhone: null };
-                    let participantContact = participantName
+                    const participantContact = participantName
                       ? (participantsMap.get(participantName.toLowerCase())
                          ?? (pPhone ? participantsMap.get(pPhone.toLowerCase()) : null)
                          ?? null)

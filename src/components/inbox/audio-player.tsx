@@ -169,7 +169,7 @@ export function AudioPlayer({
   return (
     <div
       className={cn(
-        "flex flex-col gap-1.5 rounded-xl p-2.5 min-w-[260px] max-w-[320px] select-none",
+        "flex flex-col gap-1.5 rounded-xl p-2.5 min-w-65 max-w-[320px] select-none",
         isAgent
           ? "bg-primary text-primary-foreground"
           : "bg-muted/80 text-foreground border border-border/40",
@@ -330,7 +330,7 @@ export function AudioPlayer({
             {showTranscription && (
               <div
                 className={cn(
-                  "rounded-lg p-2 text-xs leading-relaxed italic border select-text whitespace-pre-wrap break-words",
+                  "rounded-lg p-2 text-xs leading-relaxed italic border select-text whitespace-pre-wrap wrap-break-word",
                   isAgent
                     ? "bg-black/15 border-white/15 text-primary-foreground/95"
                     : "bg-background/70 border-border/60 text-foreground"

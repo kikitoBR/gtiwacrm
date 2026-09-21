@@ -290,7 +290,7 @@ function InboxPageInner() {
                   border: "1px solid rgba(255,255,255,0.12)",
                   boxShadow: "0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06)",
                 }}
-                className="flex items-center gap-3.5 rounded-2xl px-4 py-3.5 min-w-[340px] max-w-[420px] cursor-pointer transition-all duration-300 hover:scale-[1.01] hover:shadow-[0_12px_40px_rgba(0,0,0,0.45)] animate-in slide-in-from-right-5 fade-in duration-300"
+                className="flex items-center gap-3.5 rounded-2xl px-4 py-3.5 min-w-85 max-w-105 cursor-pointer transition-all hover:scale-[1.01] hover:shadow-[0_12px_40px_rgba(0,0,0,0.45)] animate-in slide-in-from-right-5 fade-in duration-300"
               >
                 {/* Avatar */}
                 <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden shadow-lg ring-2 ring-white/10">
@@ -728,7 +728,7 @@ function InboxPageInner() {
             .maybeSingle();
 
           if (convData) {
-            const normalized = normalizeConversation(convData as any);
+            const normalized = normalizeConversation(convData as unknown as Parameters<typeof normalizeConversation>[0]);
             setConversations((prev) => [normalized, ...prev.filter((c) => c.id !== normalized.id)]);
             setActiveConversation(normalized);
             setActiveContact(contactData as Contact);

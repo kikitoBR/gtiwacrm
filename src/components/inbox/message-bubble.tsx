@@ -304,19 +304,15 @@ function MessageContent({
   message,
   t,
   isAgent = false,
-  avatarUrl,
-  participantName,
 }: {
   message: Message;
   t: ReturnType<typeof useTranslations>;
   isAgent?: boolean;
-  avatarUrl?: string | null;
-  participantName?: string | null;
 }) {
   switch (message.content_type) {
     case "text":
       return (
-        <p className="whitespace-pre-wrap break-words text-sm">
+        <p className="whitespace-pre-wrap wrap-break-word text-sm">
           {message.content_text}
         </p>
       );
@@ -334,7 +330,7 @@ function MessageContent({
             <MediaUnavailable label={t("photo")} t={t} />
           )}
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+            <p className="mt-1 whitespace-pre-wrap wrap-break-word text-sm">
               {message.content_text}
             </p>
           )}
@@ -353,7 +349,7 @@ function MessageContent({
             <MediaUnavailable label={t("video")} t={t} />
           )}
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+            <p className="mt-1 whitespace-pre-wrap wrap-break-word text-sm">
               {message.content_text}
             </p>
           )}
@@ -404,7 +400,7 @@ function MessageContent({
             {t("template")}
           </span>
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+            <p className="mt-1 whitespace-pre-wrap wrap-break-word text-sm">
               {message.content_text}
             </p>
           )}
@@ -439,14 +435,14 @@ function MessageContent({
               <CornerDownLeft className="h-3 w-3" />
               {t("buttonReply")}
             </span>
-            <p className="whitespace-pre-wrap break-words text-sm">
+            <p className="whitespace-pre-wrap wrap-break-word text-sm">
               {message.content_text || t("interactiveReply")}
             </p>
           </div>
         );
       }
       return (
-        <p className="whitespace-pre-wrap break-words text-sm">
+        <p className="whitespace-pre-wrap wrap-break-word text-sm">
           {message.content_text || t("interactiveReply")}
         </p>
       );
@@ -454,7 +450,7 @@ function MessageContent({
 
     default:
       return (
-        <p className="whitespace-pre-wrap break-words text-sm">
+        <p className="whitespace-pre-wrap wrap-break-word text-sm">
           {message.content_text || t("unsupported")}
         </p>
       );
@@ -529,7 +525,7 @@ export function MessageBubble({
     >
       {isGroup && !isAgent && (
         <div
-          className="flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded-full text-[11px] font-bold text-white shadow-sm mb-1 transition-transform hover:scale-105 select-none overflow-hidden"
+          className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-[11px] font-bold text-white shadow-sm mb-1 transition-transform hover:scale-105 select-none overflow-hidden"
           style={{ backgroundColor: participantColor || "#0284c7" }}
           onClick={handleParticipantClick}
           title={participantName ? `Ver dados de ${participantName}` : "Ver dados do contato"}
@@ -590,8 +586,6 @@ export function MessageBubble({
               message={displayMessage}
               t={t}
               isAgent={isAgent}
-              avatarUrl={avatarUrl}
-              participantName={participantName}
             />
           )}
           <div

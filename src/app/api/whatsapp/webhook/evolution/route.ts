@@ -28,12 +28,13 @@ function supabaseAdmin() {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyObj = any
+
 async function processEditedMessage(
-  key: any,
-  dataOrUpdate: any,
-  msgObj: any,
-  itemObj: any,
-  config: { account_id: string; [key: string]: unknown }
+  key?: AnyObj,
+  dataOrUpdate?: AnyObj,
+  msgObj?: AnyObj,
+  itemObj?: AnyObj
 ): Promise<boolean> {
   const candidates = [
     msgObj?.protocolMessage,
@@ -326,7 +327,7 @@ export async function POST(request: Request) {
       }
 
       // Check for EDITED message protocol event in messages.upsert
-      const editHandledInUpsert = await processEditedMessage(key, data, msg, item, config)
+      const editHandledInUpsert = await processEditedMessage(key, data, msg, item)
       if (editHandledInUpsert) {
         return NextResponse.json({ status: 'success', edited: true }, { status: 200 })
       }
@@ -714,7 +715,7 @@ export async function POST(request: Request) {
       const itemMsg = data.message || (Array.isArray(data) ? data[0]?.message : null)
 
       // Check for edited message in messages.update
-      const editHandledInUpdate = await processEditedMessage(key, updateData, itemMsg, data, config)
+      const editHandledInUpdate = await processEditedMessage(key, updateData, itemMsg, data)
       if (editHandledInUpdate) {
         return NextResponse.json({ status: 'success', edited: true }, { status: 200 })
       }
