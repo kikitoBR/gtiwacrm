@@ -165,9 +165,24 @@ export function ContactDetailView({
   }
 
   async function saveDetails() {
-    if (!contactId || !editPhone.trim()) {
+    const trimmedPhone = editPhone.trim();
+    if (!contactId || !trimmedPhone) {
       toast.error(t('toastPhoneRequired'));
       return;
+    }
+
+    const cleanDigits = trimmedPhone.replace(/\D/g, '');
+    if (cleanDigits.length < 10 && !trimmedPhone.includes('@g.us')) {
+      toast.error('Telefone incompleto. Informe o DDD e o código do país (ex: +55 22 98131-0630).');
+      return;
+    }
+
+    let phoneToSave = trimmedPhone;
+    if (
+      (cleanDigits.length === 11 && cleanDigits[2] === '9' && !cleanDigits.startsWith('55')) ||
+      (cleanDigits.length === 10 && ['2', '3', '4', '5'].includes(cleanDigits[2]) && !cleanDigits.startsWith('55'))
+    ) {
+      phoneToSave = `+55${cleanDigits}`;
     }
 
     setSavingDetails(true);
@@ -175,7 +190,7 @@ export function ContactDetailView({
       .from('contacts')
       .update({
         name: editName.trim() || null,
-        phone: editPhone.trim(),
+        phone: phoneToSave,
         email: editEmail.trim() || null,
         company: editCompany.trim() || null,
         updated_at: new Date().toISOString(),

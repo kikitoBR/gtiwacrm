@@ -2,7 +2,7 @@ import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl } from '@/lib/whatsapp/meta-api'
-import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
+import { getUpgradedPhone, normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
@@ -1023,6 +1023,21 @@ export async function findOrCreateContact(
     if (avatarUrl && avatarUrl !== existingContact.avatar_url) {
       updates.avatar_url = avatarUrl
     }
+
+    // Auto-upgrade contact phone if incoming phone has complete international format
+    // and existing record is incomplete/local (e.g. +98131-0630 -> +5522981310630)
+    const upgradedPhone = getUpgradedPhone(existingContact.phone, phone)
+    if (upgradedPhone) {
+      updates.phone = upgradedPhone
+      existingContact.phone = upgradedPhone
+      const cleanUpgraded = upgradedPhone.replace(/\D/g, '')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ('phone_normalized' in (existingContact as any)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (existingContact as any).phone_normalized = cleanUpgraded
+      }
+    }
+
     if (Object.keys(updates).length > 0) {
       updates.updated_at = new Date().toISOString()
       await supabaseAdmin()

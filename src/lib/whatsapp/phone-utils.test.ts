@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatPhoneForWhatsAppSend,
+  getUpgradedPhone,
   isRecipientNotAllowedError,
   isValidE164,
   normalizePhone,
@@ -177,3 +179,69 @@ describe("isRecipientNotAllowedError", () => {
     expect(isRecipientNotAllowedError("")).toBe(false);
   });
 });
+
+describe("getUpgradedPhone", () => {
+  it("upgrades incomplete 9-digit Brazilian number to full international number", () => {
+    expect(getUpgradedPhone("+98131-0630", "5522981310630")).toBe("+5522981310630");
+    expect(getUpgradedPhone("981310630", "5522981310630")).toBe("+5522981310630");
+  });
+
+  it("upgrades 11-digit Brazilian number missing +55", () => {
+    expect(getUpgradedPhone("(22) 98131-0630", "5522981310630")).toBe("+5522981310630");
+    expect(getUpgradedPhone("22981310630", "5522981310630")).toBe("+5522981310630");
+  });
+
+  it("upgrades 12-digit number without 9th digit to 13-digit number with 9th digit", () => {
+    expect(getUpgradedPhone("552281310630", "5522981310630")).toBe("+5522981310630");
+  });
+
+  it("returns null if numbers already match canonically", () => {
+    expect(getUpgradedPhone("+5522981310630", "5522981310630")).toBe(null);
+    expect(getUpgradedPhone("5522981310630", "5522981310630")).toBe(null);
+  });
+
+  it("returns null for conflicting area codes", () => {
+    expect(getUpgradedPhone("5521981310630", "5522981310630")).toBe(null);
+  });
+
+  it("returns null for groups or null inputs", () => {
+    expect(getUpgradedPhone("123@g.us", "123@g.us")).toBe(null);
+    expect(getUpgradedPhone(null, "5522981310630")).toBe(null);
+  });
+});
+
+describe("formatPhoneForWhatsAppSend", () => {
+  it("identifies numbers with < 10 digits as incomplete", () => {
+    const res = formatPhoneForWhatsAppSend("+98131-0630");
+    expect(res.isIncomplete).toBe(true);
+    expect(res.autoPrefixedCountry).toBe(false);
+  });
+
+  it("auto-prefixes 55 for 11-digit Brazilian mobile numbers without 55", () => {
+    const res = formatPhoneForWhatsAppSend("(22) 98131-0630");
+    expect(res.isIncomplete).toBe(false);
+    expect(res.autoPrefixedCountry).toBe(true);
+    expect(res.formattedPhone).toBe("5522981310630");
+  });
+
+  it("preserves numbers already having country code 55", () => {
+    const res = formatPhoneForWhatsAppSend("+55 22 98131-0630");
+    expect(res.isIncomplete).toBe(false);
+    expect(res.autoPrefixedCountry).toBe(false);
+    expect(res.formattedPhone).toBe("5522981310630");
+  });
+
+  it("preserves US and international numbers", () => {
+    const res = formatPhoneForWhatsAppSend("+1 (415) 555-1234");
+    expect(res.isIncomplete).toBe(false);
+    expect(res.autoPrefixedCountry).toBe(false);
+    expect(res.formattedPhone).toBe("14155551234");
+  });
+
+  it("passes group JIDs through untouched", () => {
+    const res = formatPhoneForWhatsAppSend("120363024829@g.us");
+    expect(res.isIncomplete).toBe(false);
+    expect(res.formattedPhone).toBe("120363024829@g.us");
+  });
+});
+

@@ -143,3 +143,70 @@ export function phoneVariants(sanitized: string): string[] {
 export function isRecipientNotAllowedError(message: string): boolean {
   return /131030|not in allowed list|not in the allowed list/i.test(message)
 }
+
+/**
+ * Check if an incoming verified phone from WhatsApp is a more complete / canonical
+ * version of an existing contact's phone (e.g. existing is "+98131-0630" or "22981310630",
+ * while incoming is "5522981310630").
+ * Returns the upgraded canonical phone (e.g. "+5522981310630") or null if no upgrade needed.
+ */
+export function getUpgradedPhone(
+  existingPhone: string | null | undefined,
+  incomingPhone: string | null | undefined
+): string | null {
+  if (!existingPhone || !incomingPhone) return null
+  if (existingPhone.includes('@g.us') || incomingPhone.includes('@g.us')) return null
+
+  const cleanExisting = existingPhone.replace(/\D/g, '')
+  const cleanIncoming = incomingPhone.replace(/\D/g, '')
+
+  if (!cleanExisting || !cleanIncoming) return null
+  if (cleanExisting === cleanIncoming) return null
+
+  // If incoming has more digits and matches existing via phonesMatch
+  if (cleanIncoming.length >= cleanExisting.length && phonesMatch(existingPhone, incomingPhone)) {
+    return incomingPhone.startsWith('+') ? incomingPhone : `+${cleanIncoming}`
+  }
+
+  return null
+}
+
+/**
+ * Normalizes and formats a phone number for sending via WhatsApp providers.
+ * - Detects 10 or 11-digit Brazilian numbers without 55 (e.g. "22981310630" or "(22) 98131-0630")
+ *   and automatically prefixes "55" so WhatsApp can deliver.
+ * - Flags numbers with fewer than 10 digits as incomplete (missing DDD and DDI).
+ * - Leaves groups (@g.us) untouched.
+ */
+export function formatPhoneForWhatsAppSend(phone: string): {
+  formattedPhone: string
+  autoPrefixedCountry: boolean
+  isIncomplete: boolean
+} {
+  if (!phone) {
+    return { formattedPhone: '', autoPrefixedCountry: false, isIncomplete: true }
+  }
+  if (phone.includes('@g.us')) {
+    return { formattedPhone: phone.toLowerCase().trim(), autoPrefixedCountry: false, isIncomplete: false }
+  }
+
+  const digits = phone.replace(/\D/g, '')
+
+  // Numbers with fewer than 10 digits lack both country code and area code (e.g. "981310630")
+  if (digits.length < 10) {
+    return { formattedPhone: digits, autoPrefixedCountry: false, isIncomplete: true }
+  }
+
+  // 11 digits: Brazilian mobile (DDD 11-99 + 9 + 8 digits) without DDI 55
+  if (digits.length === 11 && digits[2] === '9' && !digits.startsWith('55')) {
+    return { formattedPhone: `55${digits}`, autoPrefixedCountry: true, isIncomplete: false }
+  }
+
+  // 10 digits: Brazilian landline (DDD 11-99 + 2-5 + 7 digits) without DDI 55
+  if (digits.length === 10 && ['2', '3', '4', '5'].includes(digits[2]) && !digits.startsWith('55')) {
+    return { formattedPhone: `55${digits}`, autoPrefixedCountry: true, isIncomplete: false }
+  }
+
+  return { formattedPhone: digits, autoPrefixedCountry: false, isIncomplete: false }
+}
+

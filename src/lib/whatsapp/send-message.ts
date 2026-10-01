@@ -31,6 +31,7 @@ import {
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import {
+  formatPhoneForWhatsAppSend,
   sanitizePhoneForMeta,
   isValidE164,
   phoneVariants,
@@ -233,13 +234,32 @@ export async function sendMessageToConversation(
   }
 
   const isGroup = contact.phone.includes('@g.us');
-  const sanitizedPhone = isGroup ? contact.phone : sanitizePhoneForMeta(contact.phone);
+  const sendFormat = formatPhoneForWhatsAppSend(contact.phone);
+
+  if (!isGroup && sendFormat.isIncomplete) {
+    throw new SendMessageError(
+      'bad_request',
+      `O número do contato (${contact.phone}) está incompleto (faltam DDD e DDI). Atualize o contato para o formato internacional com DDD (ex: +55 22 98131-0630).`,
+      400
+    );
+  }
+
+  const sanitizedPhone = sendFormat.formattedPhone;
   if (!isGroup && !isValidE164(sanitizedPhone)) {
     throw new SendMessageError(
       'bad_request',
       'Invalid phone number format',
       400
     );
+  }
+
+  // If Brazilian DDD was automatically prefixed with 55, update the contact in the background
+  if (sendFormat.autoPrefixedCountry) {
+    void db
+      .from('contacts')
+      .update({ phone: `+${sanitizedPhone}` })
+      .eq('id', contact.id)
+      .eq('account_id', accountId);
   }
 
   // WhatsApp config, account-scoped.

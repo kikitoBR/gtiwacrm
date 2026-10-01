@@ -125,9 +125,25 @@ export function ContactForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!phone.trim()) {
+    const trimmedPhone = phone.trim();
+    if (!trimmedPhone) {
       toast.error(t('phoneRequired'));
       return;
+    }
+
+    const cleanDigits = trimmedPhone.replace(/\D/g, '');
+    if (cleanDigits.length < 10 && !trimmedPhone.includes('@g.us')) {
+      toast.error('Telefone incompleto. Informe o DDD e o código do país (ex: +55 22 98131-0630).');
+      return;
+    }
+
+    // Auto-prefix Brazil DDI 55 for 10 or 11-digit national numbers
+    let phoneToSave = trimmedPhone;
+    if (
+      (cleanDigits.length === 11 && cleanDigits[2] === '9' && !cleanDigits.startsWith('55')) ||
+      (cleanDigits.length === 10 && ['2', '3', '4', '5'].includes(cleanDigits[2]) && !cleanDigits.startsWith('55'))
+    ) {
+      phoneToSave = `+55${cleanDigits}`;
     }
 
     // Hard-block an exact duplicate on create (the DB unique index is
@@ -154,7 +170,7 @@ export function ContactForm({
           .from('contacts')
           .update({
             name: name.trim() || null,
-            phone: phone.trim(),
+            phone: phoneToSave,
             email: email.trim() || null,
             company: company.trim() || null,
             updated_at: new Date().toISOString(),
@@ -168,7 +184,7 @@ export function ContactForm({
             user_id: user.id,
             account_id: accountId,
             name: name.trim() || null,
-            phone: phone.trim(),
+            phone: phoneToSave,
             email: email.trim() || null,
             company: company.trim() || null,
           })
