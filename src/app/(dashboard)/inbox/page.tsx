@@ -599,6 +599,14 @@ function InboxPageInner() {
     setMessages(loaded);
   }, []);
 
+  const handlePrependMessages = useCallback((older: Message[]) => {
+    setMessages((prev) => {
+      const existingIds = new Set(prev.map((m) => m.id));
+      const filtered = older.filter((m) => !existingIds.has(m.id));
+      return [...filtered, ...prev];
+    });
+  }, []);
+
   const handleNewMessage = useCallback((msg: Message) => {
     setMessages((prev) => {
       if (prev.some((m) => m.id === msg.id)) return prev;
@@ -802,6 +810,7 @@ function InboxPageInner() {
             contact={activeConversation?.contact ?? null}
             messages={messages}
             onMessagesLoaded={handleMessagesLoaded}
+            onPrependMessages={handlePrependMessages}
             onNewMessage={handleNewMessage}
             onUpdateMessage={handleUpdateMessage}
             onStatusChange={handleStatusChange}

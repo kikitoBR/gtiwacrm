@@ -27,10 +27,13 @@ import {
   RefreshCw,
   PanelRightOpen,
   PanelRightClose,
+  History,
+  Loader2,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -71,6 +74,7 @@ interface MessageThreadProps {
   contact: Contact | null;
   messages: Message[];
   onMessagesLoaded: (messages: Message[]) => void;
+  onPrependMessages?: (messages: Message[]) => void;
   onNewMessage: (message: Message) => void;
   onUpdateMessage: (id: string, updates: Partial<Message>) => void;
   onStatusChange: (conversationId: string, status: ConversationStatus) => void;
@@ -156,11 +160,14 @@ const STATUS_OPTIONS: { label: string; value: ConversationStatus; color: string 
 const DOODLE_BG_CLASSES =
   "bg-background bg-[url('/inbox-doodle.svg')] bg-repeat";
 
+const PAGE_SIZE = 150;
+
 export function MessageThread({
   conversation,
   contact,
   messages,
   onMessagesLoaded,
+  onPrependMessages,
   onNewMessage,
   onUpdateMessage,
   onStatusChange,
@@ -180,6 +187,10 @@ export function MessageThread({
   const { user } = useAuth();
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const isPrependingRef = useRef(false);
+  const prevScrollHeightRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -290,19 +301,23 @@ export function MessageThread({
 
     (async () => {
       setLoading(true);
+      setHasMore(false);
 
       const { data, error } = await supabase
         .from("messages")
         .select("*")
         .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false })
+        .limit(PAGE_SIZE);
 
       if (cancelled) return;
 
       if (error) {
         console.error("Failed to fetch messages:", error);
       } else {
-        onMessagesLoadedRef.current(data ?? []);
+        const sorted = (data ?? []).reverse();
+        setHasMore((data?.length ?? 0) === PAGE_SIZE);
+        onMessagesLoadedRef.current(sorted);
       }
 
       if (!cancelled) setLoading(false);
@@ -447,12 +462,66 @@ export function MessageThread({
       });
   }, [conversationId, hasUnread]);
 
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
+  const handleLoadOlder = useCallback(async () => {
+    if (!conversationId || loadingOlder || !hasMore || messages.length === 0) return;
+    const oldest = messages[0];
+    if (!oldest) return;
+
+    setLoadingOlder(true);
     if (scrollRef.current) {
-      const el = scrollRef.current;
-      el.scrollTop = el.scrollHeight;
+      prevScrollHeightRef.current = scrollRef.current.scrollHeight;
+      isPrependingRef.current = true;
     }
+
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("conversation_id", conversationId)
+      .lt("created_at", oldest.created_at)
+      .order("created_at", { ascending: false })
+      .limit(PAGE_SIZE);
+
+    setLoadingOlder(false);
+
+    if (error) {
+      console.error("Failed to load older messages:", error);
+      isPrependingRef.current = false;
+      prevScrollHeightRef.current = null;
+      return;
+    }
+
+    if (data) {
+      const older = [...data].reverse();
+      setHasMore(data.length === PAGE_SIZE);
+      if (onPrependMessages) {
+        onPrependMessages(older);
+      } else {
+        onMessagesLoadedRef.current([...older, ...messages]);
+      }
+    }
+  }, [conversationId, loadingOlder, hasMore, messages, onPrependMessages]);
+
+  const handleScroll = useCallback(() => {
+    if (!scrollRef.current || loadingOlder || !hasMore) return;
+    if (scrollRef.current.scrollTop < 60) {
+      handleLoadOlder();
+    }
+  }, [handleLoadOlder, loadingOlder, hasMore]);
+
+  // Auto-scroll to bottom on new messages or preserve position when loading older
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const el = scrollRef.current;
+
+    if (isPrependingRef.current && prevScrollHeightRef.current != null) {
+      el.scrollTop = el.scrollHeight - prevScrollHeightRef.current;
+      isPrependingRef.current = false;
+      prevScrollHeightRef.current = null;
+      return;
+    }
+
+    el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   const handleSend = useCallback(
@@ -1198,7 +1267,7 @@ export function MessageThread({
       </div>
 
       {/* Messages Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-4">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -1212,6 +1281,30 @@ export function MessageThread({
           </div>
         ) : (
           <div className="space-y-4">
+            {hasMore && (
+              <div className="flex justify-center pt-1 pb-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLoadOlder}
+                  disabled={loadingOlder}
+                  className="h-7 gap-1.5 rounded-full border border-border/60 bg-card/80 px-3 text-xs text-muted-foreground shadow-sm backdrop-blur hover:bg-muted hover:text-foreground"
+                >
+                  {loadingOlder ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>{t("loadingOlderMessages")}</span>
+                    </>
+                  ) : (
+                    <>
+                      <History className="h-3.5 w-3.5" />
+                      <span>{t("loadOlderMessages")}</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
             {messageGroups.map((group) => (
               <div key={group.date}>
                 {/* Date separator */}
