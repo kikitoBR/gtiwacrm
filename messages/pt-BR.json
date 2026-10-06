@@ -886,6 +886,7 @@
       "triggerType": "Tipo de gatilho",
       "greetingInterval": "Intervalo entre saudações (horas)",
       "greetingIntervalHint": "Tempo mínimo de inatividade para enviar a saudação novamente ao mesmo contato (padrão: 24 horas = 1 dia).",
+      "greetingDirectOnly": "Válido apenas para conversas individuais (ignora grupos do WhatsApp automaticamente).",
       "keywords": "Palavras-chave",
       "keywordsHint": "Lista separada por vírgula (ex: ola, ajuda, comprar)",
       "replyIds": "IDs de Resposta",

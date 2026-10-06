@@ -755,6 +755,7 @@ async function processMessage(
   // Fire-and-forget: a slow or failing automation must not block the
   // webhook's 200 OK response to Meta.
   const inboundText = contentText ?? message.text?.body ?? ''
+  const isGroup = Boolean(contactRecord.is_group || contactRecord.phone?.includes('@g.us'))
   const automationTriggers: (
     | 'new_contact_created'
     | 'first_inbound_message'
@@ -766,7 +767,10 @@ async function processMessage(
   // Content-level triggers are suppressed when a flow consumed the
   // message — see the comment block above.
   if (!flowConsumed) {
-    automationTriggers.push('new_message_received', 'keyword_match', 'greeting')
+    automationTriggers.push('new_message_received', 'keyword_match')
+    if (!isGroup) {
+      automationTriggers.push('greeting')
+    }
     // Interactive tap → fire the interactive_reply trigger too (only
     // meaningful when a button/list reply actually arrived). Enables
     // automation-only chained menus; when a Flow owns the menu it will
@@ -781,8 +785,10 @@ async function processMessage(
   // manually-imported contacts sending for the first time. We dispatch both
   // so users can pick whichever semantic they want; an automation that
   // listens to only one trigger runs only when that trigger matches.
-  if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
-  if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
+  if (!isGroup) {
+    if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
+    if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
+  }
   for (const triggerType of automationTriggers) {
     runAutomationsForTrigger({
       accountId,
@@ -794,6 +800,7 @@ async function processMessage(
         // Only set on interactive taps; drives the interactive_reply
         // trigger's exact-id match.
         interactive_reply_id: interactiveReplyId ?? undefined,
+        is_group: isGroup,
       },
     }).catch((err) => console.error('[automations] dispatch failed:', err))
   }

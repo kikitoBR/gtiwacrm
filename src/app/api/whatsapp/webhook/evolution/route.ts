@@ -665,10 +665,13 @@ export async function POST(request: Request) {
 
           if (!flowConsumed) {
             // Executa gatilhos de automações por palavra-chave ou recebimento
-            const triggers: string[] = ['new_message_received', 'keyword_match', 'greeting']
+            const triggers: string[] = ['new_message_received', 'keyword_match']
+            if (!isGroup) {
+              triggers.push('greeting')
+            }
             if (interactiveReplyId) triggers.push('interactive_reply')
-            if (contactOutcome.wasCreated) triggers.unshift('new_contact_created')
-            if (isFirstInboundMessage) triggers.unshift('first_inbound_message')
+            if (contactOutcome.wasCreated && !isGroup) triggers.unshift('new_contact_created')
+            if (isFirstInboundMessage && !isGroup) triggers.unshift('first_inbound_message')
 
             for (const triggerType of triggers) {
               runAutomationsForTrigger({
@@ -679,6 +682,7 @@ export async function POST(request: Request) {
                   message_text: contentText,
                   conversation_id: conversation.id,
                   interactive_reply_id: interactiveReplyId || undefined,
+                  is_group: isGroup,
                 },
               }).catch((err: unknown) => console.error('[webhook/evolution/automations] failed:', err))
             }

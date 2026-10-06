@@ -43,6 +43,8 @@ export interface AutomationContext {
   agent_id?: string
   /** Button / list-row id the customer tapped, for interactive_reply. */
   interactive_reply_id?: string
+  /** Whether the message occurred in a WhatsApp group. */
+  is_group?: boolean
 }
 
 export interface DispatchInput {
@@ -109,6 +111,7 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
     for (const automation of automations as Automation[]) {
       if (!triggerMatches(automation, input.context)) continue
       if (automation.trigger_type === 'greeting') {
+        if (input.context?.is_group) continue
         const canGreet = await canTriggerGreeting({
           automation,
           contactId: input.contactId,
@@ -705,6 +708,19 @@ export async function canTriggerGreeting({
     cfg?.interval_hours && Number(cfg.interval_hours) > 0 ? Number(cfg.interval_hours) : 24
   const cutoffTime = Date.now() - intervalHours * 60 * 60 * 1000
   const cutoffIso = new Date(cutoffTime).toISOString()
+
+  // 0. Bloqueio para grupos: Saudações NUNCA devem disparar em grupos do WhatsApp
+  if (contactId) {
+    const { data: contact } = await db
+      .from('contacts')
+      .select('phone, is_group')
+      .eq('id', contactId)
+      .maybeSingle()
+
+    if (contact && (contact.is_group || contact.phone?.includes('@g.us'))) {
+      return false
+    }
+  }
 
   // 1. Verificação de cooldown da automação:
   // Se esta automação já foi disparada para este contato dentro do intervalo, não dispara novamente.

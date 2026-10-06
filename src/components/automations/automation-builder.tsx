@@ -940,6 +940,10 @@ function GreetingConfig({
           {t("greetingIntervalHint")}
         </p>
       </div>
+      <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
+        <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+        <span>{t("greetingDirectOnly")}</span>
+      </div>
     </div>
   )
 }

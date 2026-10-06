@@ -886,6 +886,7 @@
       "triggerType": "Trigger type",
       "greetingInterval": "Greeting interval (hours)",
       "greetingIntervalHint": "Minimum inactivity interval before sending the greeting again to the same contact (default: 24 hours = 1 day).",
+      "greetingDirectOnly": "Only applies to 1-on-1 direct chats (WhatsApp groups are automatically ignored).",
       "keywords": "Keywords",
       "keywordsHint": "Comma-separated list (e.g. hello, help, buy)",
       "replyIds": "Reply IDs",

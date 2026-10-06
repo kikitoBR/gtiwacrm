@@ -885,6 +885,7 @@
       "triggerType": "트리거 유형",
       "greetingInterval": "인사말 재전송 간격 (시간)",
       "greetingIntervalHint": "동일 연락처에 인사말을 다시 전송하기 위한 최소 비활성 시간 (기본값: 24시간 = 1일).",
+      "greetingDirectOnly": "1:1 개인 채팅에만 적용됩니다 (WhatsApp 그룹은 자동으로 제외됩니다).",
       "keywords": "키워드",
       "keywordsHint": "쉼표로 구분된 목록 (예: hello, help, buy)",
       "replyIds": "응답 ID",

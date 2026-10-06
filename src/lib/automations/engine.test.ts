@@ -511,6 +511,34 @@ describe("canTriggerGreeting", () => {
 
     expect(allowed).toBe(true);
   });
+
+  it("blocks greeting if contact is a WhatsApp group (@g.us)", async () => {
+    h.state.owned = { id: "c-group", phone: "120363024829384920@g.us", is_group: false } as any;
+    h.state.recentLogsCount = 0;
+    h.state.messages = [];
+
+    const allowed = await canTriggerGreeting({
+      automation: greetingAutomation(),
+      contactId: "c-group",
+      conversationId: "conv-1",
+    });
+
+    expect(allowed).toBe(false);
+  });
+
+  it("blocks greeting if contact has is_group = true", async () => {
+    h.state.owned = { id: "c-group", phone: "551199999999", is_group: true } as any;
+    h.state.recentLogsCount = 0;
+    h.state.messages = [];
+
+    const allowed = await canTriggerGreeting({
+      automation: greetingAutomation(),
+      contactId: "c-group",
+      conversationId: "conv-1",
+    });
+
+    expect(allowed).toBe(false);
+  });
 });
 
 describe("evaluateCondition — time_of_day and timezone handling", () => {
