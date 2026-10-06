@@ -975,7 +975,10 @@
           "time_of_day": "Time of day"
         },
         "operandLabel": "Operand",
-        "placeholderTime": "HH:mm-HH:mm",
+        "timeRangeLabel": "Time Range (HH:mm-HH:mm)",
+        "timezoneLabel": "Timezone",
+        "currentTimeDetected": "Current time detected in timezone:",
+        "placeholderTime": "12:00-18:00",
         "placeholderContact": "name / email / company",
         "placeholderTag": "tag id",
         "urlLabel": "URL",

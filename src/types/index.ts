@@ -564,6 +564,8 @@ export interface ConditionStepConfig {
   operand?: string;
   /** For contact_field equals / message_content contains — comparison value */
   value?: string;
+  /** Timezone for time_of_day comparisons (defaults to America/Sao_Paulo) */
+  timezone?: string;
 }
 
 export interface SendWebhookStepConfig {

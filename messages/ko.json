@@ -974,7 +974,10 @@
           "time_of_day": "시간대"
         },
         "operandLabel": "피연산자",
-        "placeholderTime": "HH:mm-HH:mm",
+        "timeRangeLabel": "시간 범위 (HH:mm-HH:mm)",
+        "timezoneLabel": "시간대 (Timezone)",
+        "currentTimeDetected": "현재 감지된 시간:",
+        "placeholderTime": "12:00-18:00",
         "placeholderContact": "이름 / 이메일 / 회사",
         "placeholderTag": "태그 id",
         "urlLabel": "URL",

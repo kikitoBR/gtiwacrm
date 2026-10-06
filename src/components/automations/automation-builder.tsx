@@ -33,6 +33,7 @@ import {
   ArrowUp,
   MousePointerClick,
   List,
+  Clock,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -1319,6 +1320,57 @@ function AddButton({ onPick }: { onPick: (t: AutomationStepType) => void }) {
 // Per-step config editor
 // ------------------------------------------------------------
 
+function CurrentTimeDisplay({
+  timezone,
+  label,
+}: {
+  timezone: string
+  label: string
+}) {
+  const [nowText, setNowText] = useState(() => {
+    try {
+      return new Intl.DateTimeFormat("pt-BR", {
+        timeZone: timezone,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      }).format(new Date())
+    } catch {
+      return "--:--"
+    }
+  })
+
+  useEffect(() => {
+    const update = () => {
+      try {
+        setNowText(
+          new Intl.DateTimeFormat("pt-BR", {
+            timeZone: timezone,
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hourCycle: "h23",
+          }).format(new Date())
+        )
+      } catch {
+        setNowText("--:--")
+      }
+    }
+    update()
+    const interval = setInterval(update, 1000)
+    return () => clearInterval(interval)
+  }, [timezone])
+
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
+      <Clock className="h-3.5 w-3.5 text-primary" />
+      <span>{label}</span>
+      <span className="font-mono font-medium text-foreground">{nowText}</span>
+    </div>
+  )
+}
+
 function StepEditor({
   step,
   onChange,
@@ -1470,9 +1522,11 @@ function StepEditor({
           </FieldBlock>
         </div>
       )
-    case "condition":
+    case "condition": {
+      const isTimeOfDay = cfg.subject === "time_of_day"
+      const currentTz = (cfg.timezone as string) || "America/Sao_Paulo"
       return (
-        <>
+        <div className="space-y-3">
           <FieldBlock label={t("config.subjectLabel")}>
             <select
               value={(cfg.subject as string) ?? "tag_presence"}
@@ -1485,22 +1539,50 @@ function StepEditor({
               <option value="time_of_day">{t("config.subjects.time_of_day")}</option>
             </select>
           </FieldBlock>
-          <FieldBlock label={t("config.operandLabel")}>
-            <Input
-              placeholder={
-                cfg.subject === "time_of_day"
-                  ? t("config.placeholderTime")
-                  : cfg.subject === "contact_field"
-                  ? t("config.placeholderContact")
-                  : cfg.subject === "tag_presence"
-                  ? t("config.placeholderTag")
-                  : ""
-              }
-              value={(cfg.operand as string) ?? ""}
-              onChange={(e) => set({ operand: e.target.value })}
-              className="bg-muted text-foreground"
-            />
-          </FieldBlock>
+          {isTimeOfDay ? (
+            <>
+              <FieldBlock label={t("config.timeRangeLabel")}>
+                <Input
+                  placeholder={t("config.placeholderTime")}
+                  value={(cfg.operand as string) ?? ""}
+                  onChange={(e) => set({ operand: e.target.value })}
+                  className="bg-muted text-foreground"
+                />
+              </FieldBlock>
+              <FieldBlock label={t("config.timezoneLabel")}>
+                <select
+                  value={currentTz}
+                  onChange={(e) => set({ timezone: e.target.value })}
+                  className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
+                >
+                  <option value="America/Sao_Paulo">Brasília / São Paulo (UTC-3)</option>
+                  <option value="America/Manaus">Manaus (UTC-4)</option>
+                  <option value="America/Cuiaba">Cuiabá (UTC-4)</option>
+                  <option value="America/Rio_Branco">Rio Branco (UTC-5)</option>
+                  <option value="America/Belem">Belém (UTC-3)</option>
+                  <option value="America/Fortaleza">Fortaleza (UTC-3)</option>
+                  <option value="America/Recife">Recife (UTC-3)</option>
+                  <option value="UTC">UTC (UTC+0)</option>
+                </select>
+              </FieldBlock>
+              <CurrentTimeDisplay timezone={currentTz} label={t("config.currentTimeDetected")} />
+            </>
+          ) : (
+            <FieldBlock label={t("config.operandLabel")}>
+              <Input
+                placeholder={
+                  cfg.subject === "contact_field"
+                    ? t("config.placeholderContact")
+                    : cfg.subject === "tag_presence"
+                    ? t("config.placeholderTag")
+                    : ""
+                }
+                value={(cfg.operand as string) ?? ""}
+                onChange={(e) => set({ operand: e.target.value })}
+                className="bg-muted text-foreground"
+              />
+            </FieldBlock>
+          )}
           {(cfg.subject === "contact_field" || cfg.subject === "message_content") && (
             <FieldBlock label="Value">
               <Input
@@ -1510,8 +1592,9 @@ function StepEditor({
               />
             </FieldBlock>
           )}
-        </>
+        </div>
       )
+    }
     case "send_webhook":
       return (
         <>
@@ -1569,6 +1652,12 @@ function previewFor(step: BuilderStep): string {
     case "wait":
       return `${step.step_config.amount ?? "?"} ${step.step_config.unit ?? ""}`
     case "condition":
+      if (step.step_config.subject === "time_of_day") {
+        const op = (step.step_config.operand as string) || "HH:mm-HH:mm"
+        const tz = (step.step_config.timezone as string) || "America/Sao_Paulo"
+        const shortTz = tz.replace("America/", "").replace("_", " ")
+        return `${op} (${shortTz})`
+      }
       return `when ${step.step_config.subject ?? "?"}`
     case "send_webhook":
       return (step.step_config.url as string) || "no url"

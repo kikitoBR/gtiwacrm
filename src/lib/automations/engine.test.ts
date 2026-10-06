@@ -103,7 +103,13 @@ vi.mock("./meta-send", () => ({
   engineSendInteractive: vi.fn(async () => ({ whatsapp_message_id: "m1" })),
 }));
 
-import { runAutomationsForTrigger, triggerMatches, canTriggerGreeting } from "./engine";
+import {
+  runAutomationsForTrigger,
+  triggerMatches,
+  canTriggerGreeting,
+  getMinutesInTimezone,
+  evaluateCondition,
+} from "./engine";
 import type { Automation } from "@/types";
 
 const ACCOUNT = "acct-1";
@@ -506,4 +512,98 @@ describe("canTriggerGreeting", () => {
     expect(allowed).toBe(true);
   });
 });
+
+describe("evaluateCondition — time_of_day and timezone handling", () => {
+  const dummyArgs = {
+    automation: { id: "a1", account_id: "acct-1" },
+    contactId: "c1",
+    conversationId: "conv-1",
+    context: {},
+  } as any;
+
+  it("calculates minutes accurately according to specified timezone", () => {
+    // 2026-10-06T14:30:00Z is:
+    // 14:30 UTC -> 14 * 60 + 30 = 870 mins
+    // 11:30 BRT (America/Sao_Paulo, UTC-3) -> 11 * 60 + 30 = 690 mins
+    // 10:30 AMT (America/Manaus, UTC-4) -> 10 * 60 + 30 = 630 mins
+    const testDate = new Date("2026-10-06T14:30:00Z");
+
+    expect(getMinutesInTimezone(testDate, "UTC")).toBe(870);
+    expect(getMinutesInTimezone(testDate, "America/Sao_Paulo")).toBe(690);
+    expect(getMinutesInTimezone(testDate, "America/Manaus")).toBe(630);
+  });
+
+  it("evaluates 11:00 AM Brazil (14:00 UTC) as FALSE for range 12:00-18:00 (user scenario)", async () => {
+    vi.useFakeTimers();
+    try {
+      // 14:00:00 UTC = 11:00:00 Horário de Brasília
+      vi.setSystemTime(new Date("2026-10-06T14:00:00Z"));
+
+      // Default timezone (America/Sao_Paulo)
+      const resDefault = await evaluateCondition(
+        { subject: "time_of_day", operand: "12:00-18:00" },
+        dummyArgs
+      );
+      expect(resDefault).toBe(false);
+
+      // Explicit America/Sao_Paulo timezone
+      const resBR = await evaluateCondition(
+        { subject: "time_of_day", operand: "12:00-18:00", timezone: "America/Sao_Paulo" },
+        dummyArgs
+      );
+      expect(resBR).toBe(false);
+
+      // But in UTC timezone, 14:00 IS within 12:00-18:00
+      const resUTC = await evaluateCondition(
+        { subject: "time_of_day", operand: "12:00-18:00", timezone: "UTC" },
+        dummyArgs
+      );
+      expect(resUTC).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("evaluates 14:00 BRT (17:00 UTC) as TRUE for range 12:00-18:00", async () => {
+    vi.useFakeTimers();
+    try {
+      // 17:00:00 UTC = 14:00:00 Horário de Brasília
+      vi.setSystemTime(new Date("2026-10-06T17:00:00Z"));
+
+      const res = await evaluateCondition(
+        { subject: "time_of_day", operand: "12:00-18:00" },
+        dummyArgs
+      );
+      expect(res).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("handles over-midnight time window correctly with timezone", async () => {
+    vi.useFakeTimers();
+    try {
+      // 23:30 BRT = 02:30 next day UTC
+      vi.setSystemTime(new Date("2026-10-07T02:30:00Z"));
+
+      // Window: 22:00 to 06:00
+      const resInside = await evaluateCondition(
+        { subject: "time_of_day", operand: "22:00-06:00", timezone: "America/Sao_Paulo" },
+        dummyArgs
+      );
+      expect(resInside).toBe(true);
+
+      // 10:00 BRT = 13:00 UTC
+      vi.setSystemTime(new Date("2026-10-07T13:00:00Z"));
+      const resOutside = await evaluateCondition(
+        { subject: "time_of_day", operand: "22:00-06:00", timezone: "America/Sao_Paulo" },
+        dummyArgs
+      );
+      expect(resOutside).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 

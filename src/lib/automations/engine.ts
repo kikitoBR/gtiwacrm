@@ -763,7 +763,7 @@ export async function canTriggerGreeting({
   return true
 }
 
-async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): Promise<boolean> {
+export async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): Promise<boolean> {
   const db = supabaseAdmin()
   switch (cfg.subject) {
     case 'tag_presence': {
@@ -798,10 +798,12 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
     case 'time_of_day': {
       // operand form "HH:mm-HH:mm" — true if now is within that window
       // (supports over-midnight ranges like "18:00-09:00").
-      const [from, to] = (cfg.operand ?? '').split('-')
-      if (!from || !to) return false
-      const now = new Date()
-      const mins = now.getHours() * 60 + now.getMinutes()
+      const [rawFrom, rawTo] = (cfg.operand ?? '').split('-')
+      if (!rawFrom || !rawTo) return false
+      const from = rawFrom.trim()
+      const to = rawTo.trim()
+      const tz = cfg.timezone?.trim() || process.env.DEFAULT_TIMEZONE || process.env.TZ || 'America/Sao_Paulo'
+      const mins = getMinutesInTimezone(new Date(), tz)
       const parse = (s: string) => {
         const [h, m] = s.split(':').map(Number)
         return (h || 0) * 60 + (m || 0)
@@ -812,6 +814,36 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
     }
     default:
       return false
+  }
+}
+
+export function getMinutesInTimezone(date: Date, timezone: string): number {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: 'numeric',
+      minute: 'numeric',
+      hourCycle: 'h23',
+    })
+    const parts = formatter.formatToParts(date)
+    const hour = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10) % 24
+    const minute = parseInt(parts.find((p) => p.type === 'minute')?.value ?? '0', 10)
+    return hour * 60 + minute
+  } catch {
+    try {
+      const fallback = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Sao_Paulo',
+        hour: 'numeric',
+        minute: 'numeric',
+        hourCycle: 'h23',
+      })
+      const parts = fallback.formatToParts(date)
+      const hour = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10) % 24
+      const minute = parseInt(parts.find((p) => p.type === 'minute')?.value ?? '0', 10)
+      return hour * 60 + minute
+    } catch {
+      return date.getHours() * 60 + date.getMinutes()
+    }
   }
 }
 
