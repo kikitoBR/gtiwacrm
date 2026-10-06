@@ -758,19 +758,39 @@ export async function canTriggerGreeting({
   if (convId) {
     const { data: recentMsgs, error } = await db
       .from('messages')
-      .select('id, created_at')
+      .select('id, sender_type, created_at')
       .eq('conversation_id', convId)
-      .eq('sender_type', 'customer')
       .order('created_at', { ascending: false })
-      .limit(2)
+      .limit(10)
 
     if (error) {
-      console.error('[automations/greeting] error checking customer messages:', error)
+      console.error('[automations/greeting] error checking recent messages:', error)
     } else if (recentMsgs && recentMsgs.length > 1) {
-      const priorMsg = recentMsgs[1]
-      const priorTime = new Date(priorMsg.created_at).getTime()
-      if (priorTime >= cutoffTime) {
-        // Mensagem anterior enviada dentro do intervalo; não é a primeira mensagem do ciclo.
+      // recentMsgs[0] é a mensagem que acabou de chegar.
+      // priorMsgs são as mensagens anteriores em ordem decrescente de criação.
+      const priorMsgs = recentMsgs.slice(1)
+      const immediatePrior = priorMsgs[0]
+
+      // Cenário A: Se a mensagem imediatamente anterior foi enviada pelo atendente/agente (ou bot)
+      // dentro do intervalo de inatividade, significa que nós iniciamos o contato ou estamos em
+      // conversa ativa. O cliente apenas está respondendo ao chamado; não deve disparar saudação.
+      if (
+        immediatePrior &&
+        (immediatePrior.sender_type === 'agent' || immediatePrior.sender_type === 'bot') &&
+        new Date(immediatePrior.created_at).getTime() >= cutoffTime
+      ) {
+        return false
+      }
+
+      // Cenário B: Se o cliente já enviou uma mensagem anterior dentro do intervalo de inatividade,
+      // a saudação já deve ter sido enviada no início do ciclo.
+      const priorCustomerMsg = priorMsgs.find(
+        (m) => m.sender_type === 'customer' || !m.sender_type
+      )
+      if (
+        priorCustomerMsg &&
+        new Date(priorCustomerMsg.created_at).getTime() >= cutoffTime
+      ) {
         return false
       }
     }

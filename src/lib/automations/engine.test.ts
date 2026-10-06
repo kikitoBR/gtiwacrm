@@ -13,7 +13,7 @@ const h = vi.hoisted(() => ({
     upsertCalls: [] as { table: string; payload: unknown }[],
     logUpdates: [] as Record<string, unknown>[],
     recentLogsCount: 0,
-    messages: [] as { id: string; created_at: string }[],
+    messages: [] as { id: string; created_at: string; sender_type?: string }[],
   },
 }));
 
@@ -534,6 +534,57 @@ describe("canTriggerGreeting", () => {
     const allowed = await canTriggerGreeting({
       automation: greetingAutomation(),
       contactId: "c-group",
+      conversationId: "conv-1",
+    });
+
+    expect(allowed).toBe(false);
+  });
+
+  it("blocks greeting if the immediate previous message was sent by an agent within the interval window", async () => {
+    h.state.recentLogsCount = 0;
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    h.state.messages = [
+      { id: "m-current", sender_type: "customer", created_at: new Date().toISOString() },
+      { id: "m-agent", sender_type: "agent", created_at: tenMinutesAgo },
+    ];
+
+    const allowed = await canTriggerGreeting({
+      automation: greetingAutomation(),
+      contactId: "c1",
+      conversationId: "conv-1",
+    });
+
+    expect(allowed).toBe(false);
+  });
+
+  it("permits greeting if previous agent message is older than the interval window (e.g. 25h ago)", async () => {
+    h.state.recentLogsCount = 0;
+    const twentyFiveHoursAgo = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    h.state.messages = [
+      { id: "m-current", sender_type: "customer", created_at: new Date().toISOString() },
+      { id: "m-agent", sender_type: "agent", created_at: twentyFiveHoursAgo },
+    ];
+
+    const allowed = await canTriggerGreeting({
+      automation: greetingAutomation(),
+      contactId: "c1",
+      conversationId: "conv-1",
+    });
+
+    expect(allowed).toBe(true);
+  });
+
+  it("blocks greeting if the immediate previous message was sent by a bot within the interval window", async () => {
+    h.state.recentLogsCount = 0;
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    h.state.messages = [
+      { id: "m-current", sender_type: "customer", created_at: new Date().toISOString() },
+      { id: "m-bot", sender_type: "bot", created_at: fiveMinutesAgo },
+    ];
+
+    const allowed = await canTriggerGreeting({
+      automation: greetingAutomation(),
+      contactId: "c1",
       conversationId: "conv-1",
     });
 
