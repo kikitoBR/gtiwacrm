@@ -132,6 +132,7 @@ const ADDABLE_STEPS: AutomationStepType[] = [
 const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "new_message_received" },
   { value: "first_inbound_message" },
+  { value: "greeting" },
   { value: "keyword_match" },
   { value: "interactive_reply" },
   { value: "new_contact_created" },
@@ -755,7 +756,12 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
             <TriggerCard
               type={state.trigger_type}
               config={state.trigger_config}
-              onTypeChange={(tVal) => patchTop("trigger_type", tVal)}
+              onTypeChange={(tVal) => {
+                patchTop("trigger_type", tVal)
+                if (tVal === "greeting" && !state.trigger_config?.interval_hours) {
+                  patchTop("trigger_config", { ...state.trigger_config, interval_hours: 24 })
+                }
+              }}
               onConfigChange={(c) => patchTop("trigger_config", c)}
               t={t}
             />
@@ -838,6 +844,9 @@ function TriggerCard({
                 {t(`triggers.${type}.hint`)}
               </p>
             </div>
+            {type === "greeting" && (
+              <GreetingConfig config={config} onChange={onConfigChange} t={t} />
+            )}
             {type === "keyword_match" && (
               <KeywordMatchConfig
                 config={config as unknown as KeywordMatchTriggerConfig}
@@ -880,6 +889,55 @@ function TriggerCard({
             )}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function GreetingConfig({
+  config,
+  onChange,
+  t,
+}: {
+  config: Record<string, unknown>
+  onChange: (c: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const intervalHours = (config?.interval_hours as number | string) ?? 24
+
+  useEffect(() => {
+    if (config?.interval_hours == null) {
+      onChange({ ...config, interval_hours: 24 })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          {t("greetingInterval")}
+        </label>
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            min={1}
+            max={720}
+            value={intervalHours}
+            onChange={(e) => {
+              const val = parseInt(e.target.value, 10)
+              onChange({ ...config, interval_hours: isNaN(val) ? 24 : val })
+            }}
+            placeholder="24"
+            className="w-28 bg-muted text-foreground"
+          />
+          <span className="text-xs text-muted-foreground">
+            {Number(intervalHours) === 24 ? "horas (1 dia)" : "horas"}
+          </span>
+        </div>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {t("greetingIntervalHint")}
+        </p>
       </div>
     </div>
   )

@@ -852,6 +852,10 @@
           "label": "연락처의 첫 메시지",
           "hint": "이 연락처가 처음으로 메시지를 보냈을 때 (수동으로 추가한 연락처에도 적용됨)"
         },
+        "greeting": {
+          "label": "인사말",
+          "hint": "설정된 비활성 간격(기본: 24시간 / 1일) 동안 연락처의 첫 번째 메시지에 인사말을 전송합니다"
+        },
         "keyword_match": {
           "label": "키워드 일치",
           "hint": "메시지에 특정 키워드가 포함된 경우"
@@ -879,6 +883,8 @@
       },
       "trigger": "트리거",
       "triggerType": "트리거 유형",
+      "greetingInterval": "인사말 재전송 간격 (시간)",
+      "greetingIntervalHint": "동일 연락처에 인사말을 다시 전송하기 위한 최소 비활성 시간 (기본값: 24시간 = 1일).",
       "keywords": "키워드",
       "keywordsHint": "쉼표로 구분된 목록 (예: hello, help, buy)",
       "replyIds": "응답 ID",

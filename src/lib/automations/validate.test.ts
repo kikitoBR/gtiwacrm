@@ -282,6 +282,17 @@ describe("validateTriggerForActivation", () => {
     );
   });
 
+  it("validates greeting trigger interval_hours", () => {
+    expect(validateTriggerForActivation("greeting", {})).toEqual([]);
+    expect(validateTriggerForActivation("greeting", { interval_hours: 24 })).toEqual([]);
+    expect(validateTriggerForActivation("greeting", { interval_hours: -5 })).toEqual([
+      { path: "trigger.interval_hours", message: "interval_hours must be a positive number" },
+    ]);
+    expect(validateTriggerForActivation("greeting", { interval_hours: "invalid" })).toEqual([
+      { path: "trigger.interval_hours", message: "interval_hours must be a positive number" },
+    ]);
+  });
+
   it("does not flag unknown trigger types (handled elsewhere)", () => {
     expect(validateTriggerForActivation("some_future_trigger", {})).toEqual([]);
   });

@@ -4,6 +4,7 @@ import type {
   AutomationStep,
   AutomationTriggerType,
   ConditionStepConfig,
+  GreetingTriggerConfig,
   KeywordMatchTriggerConfig,
   InteractiveReplyTriggerConfig,
   TagTriggerConfig,
@@ -107,6 +108,14 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
 
     for (const automation of automations as Automation[]) {
       if (!triggerMatches(automation, input.context)) continue
+      if (automation.trigger_type === 'greeting') {
+        const canGreet = await canTriggerGreeting({
+          automation,
+          contactId: input.contactId,
+          conversationId: input.context?.conversation_id,
+        })
+        if (!canGreet) continue
+      }
       try {
         await executeAutomation(automation, input)
       } catch (err) {
@@ -676,6 +685,79 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
     const cfg = automation.trigger_config as TagTriggerConfig
     const tagId = ctx?.tag_id
     return Boolean(tagId && cfg?.tag_id && cfg.tag_id === tagId)
+  }
+
+  return true
+}
+
+export async function canTriggerGreeting({
+  automation,
+  contactId,
+  conversationId,
+}: {
+  automation: Automation
+  contactId?: string | null
+  conversationId?: string | null
+}): Promise<boolean> {
+  const db = supabaseAdmin()
+  const cfg = automation.trigger_config as GreetingTriggerConfig | undefined
+  const intervalHours =
+    cfg?.interval_hours && Number(cfg.interval_hours) > 0 ? Number(cfg.interval_hours) : 24
+  const cutoffTime = Date.now() - intervalHours * 60 * 60 * 1000
+  const cutoffIso = new Date(cutoffTime).toISOString()
+
+  // 1. Verificação de cooldown da automação:
+  // Se esta automação já foi disparada para este contato dentro do intervalo, não dispara novamente.
+  if (contactId) {
+    const { count, error } = await db
+      .from('automation_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('automation_id', automation.id)
+      .eq('contact_id', contactId)
+      .gte('created_at', cutoffIso)
+
+    if (error) {
+      console.error('[automations/greeting] error checking recent logs:', error)
+    } else if ((count ?? 0) > 0) {
+      return false
+    }
+  }
+
+  // 2. Verificação de histórico de mensagens (inatividade do contato):
+  // Apenas a primeira mensagem após o período de inatividade deve disparar a saudação.
+  // Como o webhook já gravou a mensagem atual no banco antes de disparar os gatilhos,
+  // buscamos as 2 mensagens mais recentes enviadas pelo cliente.
+  let convId = conversationId
+  if (!convId && contactId) {
+    const { data: conv } = await db
+      .from('conversations')
+      .select('id')
+      .eq('contact_id', contactId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (conv?.id) convId = conv.id
+  }
+
+  if (convId) {
+    const { data: recentMsgs, error } = await db
+      .from('messages')
+      .select('id, created_at')
+      .eq('conversation_id', convId)
+      .eq('sender_type', 'customer')
+      .order('created_at', { ascending: false })
+      .limit(2)
+
+    if (error) {
+      console.error('[automations/greeting] error checking customer messages:', error)
+    } else if (recentMsgs && recentMsgs.length > 1) {
+      const priorMsg = recentMsgs[1]
+      const priorTime = new Date(priorMsg.created_at).getTime()
+      if (priorTime >= cutoffTime) {
+        // Mensagem anterior enviada dentro do intervalo; não é a primeira mensagem do ciclo.
+        return false
+      }
+    }
   }
 
   return true

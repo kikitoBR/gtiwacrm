@@ -177,6 +177,16 @@ export function validateTriggerForActivation(
         message: 'match type must be "exact" or "contains"',
       })
     }
+  } else if (triggerType === 'greeting') {
+    if (cfg.interval_hours != null) {
+      const hours = Number(cfg.interval_hours)
+      if (isNaN(hours) || hours <= 0) {
+        issues.push({
+          path: 'trigger.interval_hours',
+          message: 'interval_hours must be a positive number',
+        })
+      }
+    }
   } else if (triggerType === 'time_based') {
     if (!nonEmpty(cfg.schedule)) {
       issues.push({ path: 'trigger.schedule', message: 'schedule is required' })

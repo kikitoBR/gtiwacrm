@@ -12,6 +12,8 @@ const h = vi.hoisted(() => ({
     updateCalls: [] as { table: string; filters: [string, string, unknown][] }[],
     upsertCalls: [] as { table: string; payload: unknown }[],
     logUpdates: [] as Record<string, unknown>[],
+    recentLogsCount: 0,
+    messages: [] as { id: string; created_at: string }[],
   },
 }));
 
@@ -51,8 +53,9 @@ vi.mock("./admin-client", () => {
         state.logUpdates.push(ops.payload as Record<string, unknown>);
         return { data: null, error: null };
       }
-      return { data: { steps_executed: [], status: "success" }, error: null };
+      return { data: { steps_executed: [], status: "success" }, count: state.recentLogsCount, error: null };
     }
+    if (table === "messages") return { data: state.messages, error: null };
     if (table === "automation_steps") return { data: state.steps, error: null };
     return { data: null, error: null };
   }
@@ -100,7 +103,7 @@ vi.mock("./meta-send", () => ({
   engineSendInteractive: vi.fn(async () => ({ whatsapp_message_id: "m1" })),
 }));
 
-import { runAutomationsForTrigger, triggerMatches } from "./engine";
+import { runAutomationsForTrigger, triggerMatches, canTriggerGreeting } from "./engine";
 import type { Automation } from "@/types";
 
 const ACCOUNT = "acct-1";
@@ -114,6 +117,8 @@ beforeEach(() => {
   h.state.updateCalls = [];
   h.state.upsertCalls = [];
   h.state.logUpdates = [];
+  h.state.recentLogsCount = 0;
+  h.state.messages = [];
 });
 
 describe("runAutomationsForTrigger — tenant isolation", () => {
@@ -404,3 +409,101 @@ describe("tag_added — conversation policy", () => {
     }));
   });
 });
+
+describe("canTriggerGreeting", () => {
+  const greetingAutomation = (intervalHours?: number): Automation => ({
+    id: "auto-greeting-1",
+    account_id: ACCOUNT,
+    user_id: "u1",
+    name: "Saudação Diária",
+    description: "Envia saudação com intervalo de 24h",
+    trigger_type: "greeting",
+    trigger_config: intervalHours ? { interval_hours: intervalHours } : {},
+    is_active: true,
+    execution_count: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+
+  it("permits greeting on first message from contact (no logs, no prior customer messages)", async () => {
+    h.state.recentLogsCount = 0;
+    h.state.messages = [{ id: "m-current", created_at: new Date().toISOString() }];
+
+    const allowed = await canTriggerGreeting({
+      automation: greetingAutomation(),
+      contactId: "c1",
+      conversationId: "conv-1",
+    });
+
+    expect(allowed).toBe(true);
+  });
+
+  it("blocks greeting if automation was already executed within the interval", async () => {
+    h.state.recentLogsCount = 1; // Log exists in last 24h
+    h.state.messages = [{ id: "m-current", created_at: new Date().toISOString() }];
+
+    const allowed = await canTriggerGreeting({
+      automation: greetingAutomation(),
+      contactId: "c1",
+      conversationId: "conv-1",
+    });
+
+    expect(allowed).toBe(false);
+  });
+
+  it("blocks greeting if another customer message was sent within the interval window", async () => {
+    h.state.recentLogsCount = 0;
+    // Current message + message from 10 minutes ago
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    h.state.messages = [
+      { id: "m-current", created_at: new Date().toISOString() },
+      { id: "m-prior", created_at: tenMinutesAgo },
+    ];
+
+    const allowed = await canTriggerGreeting({
+      automation: greetingAutomation(),
+      contactId: "c1",
+      conversationId: "conv-1",
+    });
+
+    expect(allowed).toBe(false);
+  });
+
+  it("permits greeting if previous customer message is older than 24 hours (next day same time)", async () => {
+    h.state.recentLogsCount = 0;
+    // Current message + message from 25 hours ago
+    const twentyFiveHoursAgo = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    h.state.messages = [
+      { id: "m-current", created_at: new Date().toISOString() },
+      { id: "m-prior", created_at: twentyFiveHoursAgo },
+    ];
+
+    const allowed = await canTriggerGreeting({
+      automation: greetingAutomation(),
+      contactId: "c1",
+      conversationId: "conv-1",
+    });
+
+    expect(allowed).toBe(true);
+  });
+
+  it("respects custom interval_hours (e.g. 12 hours)", async () => {
+    h.state.recentLogsCount = 0;
+    // Message from 15 hours ago
+    const fifteenHoursAgo = new Date(Date.now() - 15 * 60 * 60 * 1000).toISOString();
+    h.state.messages = [
+      { id: "m-current", created_at: new Date().toISOString() },
+      { id: "m-prior", created_at: fifteenHoursAgo },
+    ];
+
+    // With 12h interval, 15h ago is older -> permits greeting
+    const allowed = await canTriggerGreeting({
+      automation: greetingAutomation(12),
+      contactId: "c1",
+      conversationId: "conv-1",
+    });
+
+    expect(allowed).toBe(true);
+  });
+});
+

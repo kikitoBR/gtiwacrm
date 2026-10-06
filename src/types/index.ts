@@ -438,6 +438,7 @@ export interface BroadcastRecipient {
 export type AutomationTriggerType =
   | 'new_message_received'
   | 'first_inbound_message'
+  | 'greeting'
   | 'keyword_match'
   | 'new_contact_created'
   | 'conversation_assigned'
@@ -470,6 +471,11 @@ export interface KeywordMatchTriggerConfig {
   case_sensitive?: boolean;
 }
 
+export interface GreetingTriggerConfig {
+  /** Inactivity interval in hours before greeting can trigger again. Default: 24 (1 day). */
+  interval_hours?: number;
+}
+
 export interface TagTriggerConfig {
   tag_id: string;
 }
@@ -488,6 +494,7 @@ export interface InteractiveReplyTriggerConfig {
 export type AutomationTriggerConfig =
   | Record<string, never>
   | KeywordMatchTriggerConfig
+  | GreetingTriggerConfig
   | TagTriggerConfig
   | TimeBasedTriggerConfig
   | InteractiveReplyTriggerConfig

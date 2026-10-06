@@ -758,6 +758,7 @@ async function processMessage(
   const automationTriggers: (
     | 'new_contact_created'
     | 'first_inbound_message'
+    | 'greeting'
     | 'new_message_received'
     | 'keyword_match'
     | 'interactive_reply'
@@ -765,7 +766,7 @@ async function processMessage(
   // Content-level triggers are suppressed when a flow consumed the
   // message — see the comment block above.
   if (!flowConsumed) {
-    automationTriggers.push('new_message_received', 'keyword_match')
+    automationTriggers.push('new_message_received', 'keyword_match', 'greeting')
     // Interactive tap → fire the interactive_reply trigger too (only
     // meaningful when a button/list reply actually arrived). Enables
     // automation-only chained menus; when a Flow owns the menu it will

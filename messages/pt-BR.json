@@ -853,6 +853,10 @@
           "label": "Primeira Mensagem do Contato",
           "hint": "Primeira vez que este contato envia uma mensagem (funciona para contatos adicionados manualmente também)"
         },
+        "greeting": {
+          "label": "Saudação",
+          "hint": "Envia saudação na primeira mensagem do contato com intervalo mínimo de inatividade (padrão: 24 horas / 1 dia)"
+        },
         "keyword_match": {
           "label": "Palavra-chave Correspondente",
           "hint": "A mensagem contém palavra(s)-chave específica(s)"
@@ -880,6 +884,8 @@
       },
       "trigger": "Gatilho",
       "triggerType": "Tipo de gatilho",
+      "greetingInterval": "Intervalo entre saudações (horas)",
+      "greetingIntervalHint": "Tempo mínimo de inatividade para enviar a saudação novamente ao mesmo contato (padrão: 24 horas = 1 dia).",
       "keywords": "Palavras-chave",
       "keywordsHint": "Lista separada por vírgula (ex: ola, ajuda, comprar)",
       "replyIds": "IDs de Resposta",

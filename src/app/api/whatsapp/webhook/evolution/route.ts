@@ -665,7 +665,7 @@ export async function POST(request: Request) {
 
           if (!flowConsumed) {
             // Executa gatilhos de automações por palavra-chave ou recebimento
-            const triggers: string[] = ['new_message_received', 'keyword_match']
+            const triggers: string[] = ['new_message_received', 'keyword_match', 'greeting']
             if (interactiveReplyId) triggers.push('interactive_reply')
             if (contactOutcome.wasCreated) triggers.unshift('new_contact_created')
             if (isFirstInboundMessage) triggers.unshift('first_inbound_message')
