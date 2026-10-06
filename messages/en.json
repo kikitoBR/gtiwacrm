@@ -899,6 +899,7 @@
       "saveDraft": "Save Draft",
       "untitled": "Untitled automation",
       "backToAutomations": "Back to automations",
+      "delete": "Delete",
       "toasts": {
         "saved": "Automation saved",
         "created": "Automation created",

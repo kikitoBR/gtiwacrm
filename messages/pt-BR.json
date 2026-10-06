@@ -899,6 +899,7 @@
       "saveDraft": "Salvar Rascunho",
       "untitled": "Automação sem título",
       "backToAutomations": "Voltar para automações",
+      "delete": "Excluir",
       "toasts": {
         "saved": "Automação salva com sucesso",
         "created": "Automação criada com sucesso",
