@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createClient } from '@supabase/supabase-js'
 import { getWhatsAppProvider } from '@/lib/whatsapp/provider-factory'
+import { isValidAvatarUrl } from '@/lib/utils/avatar'
 
 function supabaseAdmin() {
   return createClient(
@@ -13,17 +14,25 @@ function supabaseAdmin() {
 export async function POST() {
   const supabase = await createServerClient()
   const {
-    data: { session },
-  } = await supabase.auth.getSession()
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (!session) {
+  let userId = user?.id
+  if (!userId) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    userId = session?.user?.id
+  }
+
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const { data: profile } = await supabase
     .from('profiles')
     .select('account_id')
-    .eq('user_id', session.user.id)
+    .eq('user_id', userId)
     .maybeSingle()
 
   const accountId = profile?.account_id
@@ -60,7 +69,7 @@ export async function POST() {
       const cleanPhone = item.id ? item.id.replace(/\D/g, '') : ''
       if (cleanPhone && cleanPhone.length >= 8 && cleanPhone.length <= 13) {
         const name = item.name || item.pushName || `+${cleanPhone}`
-        const avatar_url = item.pictureUrl || null
+        const avatar_url = (item.pictureUrl && isValidAvatarUrl(item.pictureUrl)) ? item.pictureUrl : null
         // Only set name if we don't already have a better one
         if (!candidatesByPhone.has(cleanPhone)) {
           candidatesByPhone.set(cleanPhone, { name, avatar_url })
@@ -70,7 +79,7 @@ export async function POST() {
           if (existing.name.startsWith('+') && !name.startsWith('+')) {
             existing.name = name
           }
-          if (avatar_url && !existing.avatar_url) {
+          if (avatar_url && (!existing.avatar_url || !isValidAvatarUrl(existing.avatar_url))) {
             existing.avatar_url = avatar_url
           }
         }

@@ -13,6 +13,7 @@ import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
+import { isValidAvatarUrl } from '@/lib/utils/avatar'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -1028,7 +1029,7 @@ export async function findOrCreateContact(
         }
       }
     }
-    if (avatarUrl && avatarUrl !== existingContact.avatar_url) {
+    if (avatarUrl && isValidAvatarUrl(avatarUrl) && avatarUrl !== existingContact.avatar_url) {
       updates.avatar_url = avatarUrl
     }
 
@@ -1067,7 +1068,7 @@ export async function findOrCreateContact(
       user_id: configOwnerUserId,
       phone,
       name: name || phone,
-      avatar_url: avatarUrl || null,
+      avatar_url: (avatarUrl && isValidAvatarUrl(avatarUrl)) ? avatarUrl : null,
     })
     .select()
     .single()

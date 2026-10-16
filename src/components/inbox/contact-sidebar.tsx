@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { isValidAvatarUrl } from "@/lib/utils/avatar";
 import type { Contact, ContactNote, Tag } from "@/types";
 import {
   Phone,
@@ -219,7 +220,7 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
         {/* Header Info */}
         <div className="flex flex-col items-center text-center">
           <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-muted text-xl font-bold text-foreground overflow-hidden ring-2 ring-primary/20 shadow-md">
-            {avatarImage && !headerAvatarError ? (
+            {avatarImage && !headerAvatarError && isValidAvatarUrl(avatarImage) ? (
               <img
                 src={avatarImage}
                 alt={displayName}
@@ -530,7 +531,7 @@ export function ContactSidebar({ contact, conversationId, onNavigateToContact }:
                       }`}
                     >
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground overflow-hidden ring-1 ring-border">
-                        {member.avatar_url && !hasAvatarErr ? (
+                        {member.avatar_url && !hasAvatarErr && isValidAvatarUrl(member.avatar_url) ? (
                           <img
                             src={member.avatar_url}
                             alt={member.name}

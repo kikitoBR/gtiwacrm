@@ -8,6 +8,7 @@ import {
   normalizeConversations,
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
+import { isValidAvatarUrl } from "@/lib/utils/avatar";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
 import { Search, ChevronDown, X, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -475,6 +476,8 @@ function ConversationItem({
   const contact = conversation.contact;
   const displayName = contact?.name || contact?.phone || t("unknown");
   const initials = displayName.charAt(0).toUpperCase();
+  const [imgError, setImgError] = useState(false);
+  const showAvatar = Boolean(contact?.avatar_url && !imgError && isValidAvatarUrl(contact.avatar_url));
 
   const handleClick = useCallback(() => {
     onSelect(conversation);
@@ -492,11 +495,12 @@ function ConversationItem({
     >
       {/* Avatar */}
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-        {contact?.avatar_url ? (
+        {showAvatar ? (
           <img
-            src={contact.avatar_url}
+            src={contact!.avatar_url!}
             alt={displayName}
             className="h-10 w-10 rounded-full object-cover"
+            onError={() => setImgError(true)}
           />
         ) : (
           initials

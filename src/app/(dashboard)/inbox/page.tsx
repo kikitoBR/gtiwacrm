@@ -16,6 +16,7 @@ import { ContactSidebar } from "@/components/inbox/contact-sidebar";
 import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isValidAvatarUrl } from "@/lib/utils/avatar";
 
 // Remembers the agent's show/hide choice for the desktop contact panel
 // across reloads and sessions (device-scoped, like the theme prefs).
@@ -258,7 +259,8 @@ function InboxPageInner() {
           const targetConv = conversations.find((c) => c.id === newMsg.conversation_id);
           const senderName =
             targetConv?.contact?.name || targetConv?.contact?.phone || "Nova mensagem";
-          const senderAvatar = targetConv?.contact?.avatar_url || null;
+          const rawSenderAvatar = targetConv?.contact?.avatar_url || null;
+          const senderAvatar = isValidAvatarUrl(rawSenderAvatar) ? rawSenderAvatar : null;
           const snippetText = newMsg.content_text || "Mensagem recebida no WhatsApp";
           const nowTime = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
@@ -299,6 +301,9 @@ function InboxPageInner() {
                       src={senderAvatar}
                       alt={senderName}
                       className="h-12 w-12 rounded-full object-cover"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLElement).style.display = "none";
+                      }}
                     />
                   ) : (
                     <div

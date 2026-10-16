@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { isValidAvatarUrl } from "@/lib/utils/avatar";
 import type { Contact, Message, MessageReaction } from "@/types";
 import {
   Clock,
@@ -487,17 +488,21 @@ export function MessageBubble({
   const initialAvatarUrl = participantContact?.avatar_url || null;
   const [fetchedAvatarUrl, setFetchedAvatarUrl] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState(false);
-  const avatarUrl = initialAvatarUrl || fetchedAvatarUrl;
+  const rawAvatarUrl = initialAvatarUrl || fetchedAvatarUrl;
+  const avatarUrl = isValidAvatarUrl(rawAvatarUrl) ? rawAvatarUrl : null;
 
   useEffect(() => {
+    const hasValidInitial = isValidAvatarUrl(initialAvatarUrl);
     const phoneToQuery = participantContact?.phone || participantPhone || participantName;
-    if (!initialAvatarUrl && phoneToQuery) {
+    if (!hasValidInitial && phoneToQuery) {
       if (phoneToQuery.replace(/\D/g, "").length >= 8) {
         let cancelled = false;
         fetch(`/api/whatsapp/contact-avatar?phone=${encodeURIComponent(phoneToQuery)}`)
           .then((res) => (res.ok ? res.json() : null))
           .then((data) => {
-            if (!cancelled && data?.avatar_url) setFetchedAvatarUrl(data.avatar_url);
+            if (!cancelled && data?.avatar_url && isValidAvatarUrl(data.avatar_url)) {
+              setFetchedAvatarUrl(data.avatar_url);
+            }
           })
           .catch(() => {});
         return () => {

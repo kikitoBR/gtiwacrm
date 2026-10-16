@@ -3,6 +3,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createClient } from '@supabase/supabase-js'
 import { getWhatsAppProvider } from '@/lib/whatsapp/provider-factory'
 import { parseGroupMessage } from '@/lib/whatsapp/group-utils'
+import { isValidAvatarUrl } from '@/lib/utils/avatar'
 
 function supabaseAdmin() {
   return createClient(
@@ -22,17 +23,25 @@ export async function GET(request: Request) {
 
   const supabase = await createServerClient()
   const {
-    data: { session },
-  } = await supabase.auth.getSession()
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (!session) {
+  let userId = user?.id
+  if (!userId) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    userId = session?.user?.id
+  }
+
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const { data: profile } = await supabase
     .from('profiles')
     .select('account_id')
-    .eq('user_id', session.user.id)
+    .eq('user_id', userId)
     .maybeSingle()
 
   const accountId = profile?.account_id
@@ -111,7 +120,7 @@ export async function GET(request: Request) {
       rawList.push({
         phone,
         name,
-        avatar_url: p.avatar_url || null,
+        avatar_url: p.avatar_url && isValidAvatarUrl(p.avatar_url) ? p.avatar_url : null,
         admin: p.admin || null,
       })
     }
@@ -235,7 +244,9 @@ export async function GET(request: Request) {
           const matchByPhone = rawList.find((p) => p.phone === cCleanPhone)
           if (matchByPhone) {
             matchByPhone.name = c.name
-            matchByPhone.avatar_url = c.avatar_url || matchByPhone.avatar_url
+            if (c.avatar_url && isValidAvatarUrl(c.avatar_url)) {
+              matchByPhone.avatar_url = c.avatar_url
+            }
             continue
           }
         }
@@ -247,7 +258,9 @@ export async function GET(request: Request) {
           if (cCleanPhone && cCleanPhone.length <= 13 && !matchByName.phone) {
             matchByName.phone = cCleanPhone
           }
-          matchByName.avatar_url = c.avatar_url || matchByName.avatar_url
+          if (c.avatar_url && isValidAvatarUrl(c.avatar_url)) {
+            matchByName.avatar_url = c.avatar_url
+          }
         }
       }
     }
@@ -276,7 +289,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     subject: fullGroupInfo?.subject || null,
     description: fullGroupInfo?.description || null,
-    pictureUrl: fullGroupInfo?.pictureUrl || null,
+    pictureUrl: fullGroupInfo?.pictureUrl && isValidAvatarUrl(fullGroupInfo.pictureUrl) ? fullGroupInfo.pictureUrl : null,
     owner: fullGroupInfo?.owner || null,
     totalParticipantsCount: totalCount,
     participants: deduplicatedParticipants,

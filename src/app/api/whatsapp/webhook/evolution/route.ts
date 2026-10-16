@@ -14,6 +14,7 @@ import { decrypt } from '@/lib/whatsapp/encryption'
 import { EvolutionWhatsAppProvider } from '@/lib/whatsapp/evolution-provider'
 import { getWhatsAppProvider } from '@/lib/whatsapp/provider-factory'
 import { parseGroupMessage } from '@/lib/whatsapp/group-utils'
+import { isValidAvatarUrl } from '@/lib/utils/avatar'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _adminClient: any = null
@@ -513,14 +514,14 @@ export async function POST(request: Request) {
                   .update({ name: item.pushName })
                   .eq('id', pContact.id)
               }
-              if (!pContact.avatar_url) {
+              if (!pContact.avatar_url || !isValidAvatarUrl(pContact.avatar_url)) {
                 try {
                   const provider = getWhatsAppProvider(config)
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const provAny = provider as any
                   if (typeof provAny.getProfilePictureUrl === 'function') {
                     const pic = await provAny.getProfilePictureUrl(pPhone)
-                    if (pic) {
+                    if (pic && isValidAvatarUrl(pic)) {
                       await supabaseAdmin()
                         .from('contacts')
                         .update({ avatar_url: pic })

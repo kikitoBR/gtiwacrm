@@ -7,6 +7,7 @@ import { usePresence } from "@/hooks/use-presence";
 import { PresenceDot } from "@/components/presence/presence-dot";
 import { presenceLabel } from "@/lib/presence";
 import { cn } from "@/lib/utils";
+import { isValidAvatarUrl } from "@/lib/utils/avatar";
 import type {
   Conversation,
   Message,
@@ -195,6 +196,11 @@ export function MessageThread({
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
+  const [headerAvatarError, setHeaderAvatarError] = useState(false);
+  useEffect(() => {
+    setHeaderAvatarError(false);
+  }, [conversation?.id]);
+
   // Purely visual spin state for the manual-refresh button. The actual
   // refetch is fire-and-forget through `onRefresh` (which bumps the
   // parent's resyncToken); the 700ms spin is just feedback so the click
@@ -1091,11 +1097,12 @@ export function MessageThread({
             }}
             title="Ver dados do contato"
           >
-            {contact.avatar_url ? (
+            {contact.avatar_url && !headerAvatarError && isValidAvatarUrl(contact.avatar_url) ? (
               <img
                 src={contact.avatar_url}
                 alt={displayName}
                 className="h-9 w-9 shrink-0 rounded-full object-cover"
+                onError={() => setHeaderAvatarError(true)}
               />
             ) : (
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">

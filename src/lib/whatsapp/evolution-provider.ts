@@ -305,41 +305,27 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     const cleanPhone = toPhone.replace(/\D/g, '')
     const remoteJid = toPhone.includes('@') ? toPhone : `${cleanPhone}@s.whatsapp.net`
     const fromMe = args.fromMe ?? true
-    const key = { remoteJid, fromMe, id: args.messageId }
 
-    const payloads = [
-      { number: cleanPhone, id: args.messageId, remoteJid, fromMe, status: 'REVOKE', key },
-      { remoteJid, id: args.messageId, fromMe },
-      { keys: [key] },
-      { key },
-    ]
+    // Official Evolution API v2 payload
+    const payload = { remoteJid, fromMe, id: args.messageId }
 
-    for (const p of payloads) {
-      try {
-        await this.request('/message/delete', p, 'POST')
-        return { success: true }
-      } catch { /* continue */ }
-
-      try {
-        await this.request('/message/delete', p, 'DELETE')
-        return { success: true }
-      } catch { /* continue */ }
-
-      try {
-        await this.request('/chat/deleteMessageForEveryone', p, 'DELETE')
-        return { success: true }
-      } catch { /* continue */ }
-
-      try {
-        await this.request('/chat/deleteMessageForEveryone', p, 'POST')
-        return { success: true }
-      } catch { /* continue */ }
-
-      try {
-        await this.request('/message/deleteMessageForEveryone', p, 'POST')
-        return { success: true }
-      } catch { /* continue */ }
+    try {
+      await this.request('/chat/deleteMessageForEveryone', payload, 'DELETE')
+      return { success: true }
+    } catch (err) {
+      console.warn('[Evolution API] /chat/deleteMessageForEveryone (DELETE) first attempt failed:', err)
     }
+
+    try {
+      const key = { remoteJid, fromMe, id: args.messageId }
+      await this.request('/chat/deleteMessageForEveryone', { number: cleanPhone, id: args.messageId, remoteJid, fromMe, status: 'REVOKE', key }, 'DELETE')
+      return { success: true }
+    } catch { /* continue */ }
+
+    try {
+      await this.request('/chat/deleteMessageForEveryone', payload, 'POST')
+      return { success: true }
+    } catch { /* continue */ }
 
     console.warn('[Evolution API] deleteMessage failed after trying all endpoints')
     return { success: false }

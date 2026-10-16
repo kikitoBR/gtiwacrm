@@ -19,33 +19,37 @@ async function fetchMessageContext(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ...clients: any[]
 ) {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+
   for (const client of clients) {
-    // Try the joined query first
-    const { data: msg } = await client
+    // 1. Try joined query first
+    const joinedQuery = client
       .from('messages')
       .select('*, conversations(account_id, contact_id, contacts(phone))')
-      .eq('id', id)
-      .maybeSingle()
+    const { data: msg } = isUuid
+      ? await joinedQuery.eq('id', id).maybeSingle()
+      : await joinedQuery.eq('message_id', id).maybeSingle()
 
     if (msg) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const conv = Array.isArray(msg?.conversations) ? msg.conversations[0] : (msg?.conversations as any)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const contact = Array.isArray(conv?.contacts) ? conv.contacts[0] : (conv?.contacts as any)
-      return {
-        msg,
-        phone: contact?.phone as string | undefined,
-        accountId: conv?.account_id as string | undefined,
-        waMsgId: (msg?.whatsapp_message_id || (msg as any)?.message_id) as string | undefined,
+      if (conv?.account_id && contact?.phone) {
+        return {
+          msg,
+          phone: contact.phone as string,
+          accountId: conv.account_id as string,
+          waMsgId: ((msg as any)?.message_id || msg?.whatsapp_message_id) as string | undefined,
+        }
       }
     }
 
-    // Fallback: query message alone, then conversation and contact separately
-    const { data: rawMsg } = await client
-      .from('messages')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle()
+    // 2. Fallback: query message alone, then conversation and contact separately
+    const baseQuery = client.from('messages').select('*')
+    const { data: rawMsg } = isUuid
+      ? await baseQuery.eq('id', id).maybeSingle()
+      : await baseQuery.eq('message_id', id).maybeSingle()
 
     if (rawMsg) {
       let phone: string | undefined
@@ -73,7 +77,7 @@ async function fetchMessageContext(
         msg: rawMsg,
         phone,
         accountId,
-        waMsgId: (rawMsg?.whatsapp_message_id || (rawMsg as any)?.message_id) as string | undefined,
+        waMsgId: ((rawMsg as any)?.message_id || rawMsg?.whatsapp_message_id) as string | undefined,
       }
     }
   }
@@ -87,15 +91,19 @@ export async function DELETE(
   const { id } = await props.params
   const supabase = await createServerClient()
   const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const {
     data: { session },
   } = await supabase.auth.getSession()
 
-  if (!session) {
+  const currentUser = user || session?.user
+  if (!currentUser) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const admin = supabaseAdmin()
-  const ctx = await fetchMessageContext(id, supabase, admin)
+  const ctx = await fetchMessageContext(id, admin, supabase)
 
   if (!ctx) {
     return NextResponse.json({ error: 'Message not found' }, { status: 404 })
@@ -131,23 +139,18 @@ export async function DELETE(
   const isAgent = msg.sender_type === 'agent' || msg.sender_type === 'bot'
   const deletedText = isAgent ? '🚫 Você apagou esta mensagem' : '🚫 Esta mensagem foi apagada'
 
-  // Soft delete: update content_text and status. Try admin first (bypasses RLS), fallback to session client.
-  let updateError = null
+  // Soft delete: update content_text and status using admin client
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  const filterCol = isUuid ? 'id' : 'message_id'
+
   const { error: adminErr } = await admin
     .from('messages')
     .update({ content_text: deletedText, status: 'deleted' })
-    .eq('id', id)
+    .eq(filterCol, id)
 
   if (adminErr) {
-    const { error: sessErr } = await supabase
-      .from('messages')
-      .update({ content_text: deletedText, status: 'deleted' })
-      .eq('id', id)
-    updateError = sessErr
-  }
-
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 })
+    console.error('Error soft-deleting message:', adminErr)
+    return NextResponse.json({ error: adminErr.message }, { status: 500 })
   }
 
   return NextResponse.json({ success: true })
@@ -160,10 +163,14 @@ export async function PATCH(
   const { id } = await props.params
   const supabase = await createServerClient()
   const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const {
     data: { session },
   } = await supabase.auth.getSession()
 
-  if (!session) {
+  const currentUser = user || session?.user
+  if (!currentUser) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -173,7 +180,7 @@ export async function PATCH(
   }
 
   const admin = supabaseAdmin()
-  const ctx = await fetchMessageContext(id, supabase, admin)
+  const ctx = await fetchMessageContext(id, admin, supabase)
 
   if (!ctx) {
     return NextResponse.json({ error: 'Message not found' }, { status: 404 })
@@ -207,23 +214,17 @@ export async function PATCH(
     }
   }
 
-  // Update content_text. Try admin first, fallback to session client.
-  let updateError = null
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  const filterCol = isUuid ? 'id' : 'message_id'
+
   const { error: adminErr } = await admin
     .from('messages')
     .update({ content_text: newText.trim() })
-    .eq('id', id)
+    .eq(filterCol, id)
 
   if (adminErr) {
-    const { error: sessErr } = await supabase
-      .from('messages')
-      .update({ content_text: newText.trim() })
-      .eq('id', id)
-    updateError = sessErr
-  }
-
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 })
+    console.error('Error editing message:', adminErr)
+    return NextResponse.json({ error: adminErr.message }, { status: 500 })
   }
 
   return NextResponse.json({ success: true, newText: newText.trim() })
