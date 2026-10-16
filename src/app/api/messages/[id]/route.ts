@@ -143,10 +143,21 @@ export async function DELETE(
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
   const filterCol = isUuid ? 'id' : 'message_id'
 
-  const { error: adminErr } = await admin
+  let { error: adminErr } = await admin
     .from('messages')
     .update({ content_text: deletedText, status: 'deleted' })
     .eq(filterCol, id)
+
+  // If Postgres rejects status 'deleted' due to messages_status_check constraint,
+  // fallback to soft-deleting with content_text and clearing media_url
+  if (adminErr && adminErr.code === '23514') {
+    console.warn('[messages/delete] status: "deleted" rejected by constraint, soft-deleting via content_text')
+    const fallback = await admin
+      .from('messages')
+      .update({ content_text: deletedText, media_url: null })
+      .eq(filterCol, id)
+    adminErr = fallback.error
+  }
 
   if (adminErr) {
     console.error('Error soft-deleting message:', adminErr)
