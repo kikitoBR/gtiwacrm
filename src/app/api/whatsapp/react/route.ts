@@ -60,44 +60,58 @@ export async function POST(request: Request) {
     }
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(message_id);
+    const admin = supabaseAdmin();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let targetMessage: any = null;
+    // 1. Fetch message + conversation + contact in a single query
+    const joinedQuery = admin
+      .from('messages')
+      .select('id, message_id, sender_type, conversation_id, conversations(id, account_id, contact_id, contacts(phone))');
 
-    // Strategy: try user client first (works with RLS), then admin as fallback
-    const clients = [supabase, supabaseAdmin()];
+    const { data: joinedMsg } = isUuid
+      ? await joinedQuery.eq('id', message_id).maybeSingle()
+      : await joinedQuery.eq('message_id', message_id).maybeSingle();
 
-    for (const client of clients) {
-      if (targetMessage) break;
+    let targetMessage: {
+      id: string;
+      message_id?: string | null;
+      sender_type: string;
+      conversation_id: string;
+    } | null = null;
+    let conversation: { id: string; account_id: string; contact_id?: string | null } | null = null;
+    let phone: string | undefined;
 
-      // 1. Match by primary key id (if UUID format)
-      if (isUuid) {
-        const { data } = await client
-          .from('messages')
-          .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
-          .eq('id', message_id)
-          .maybeSingle();
-        if (data) { targetMessage = data; break; }
+    if (joinedMsg) {
+      targetMessage = {
+        id: joinedMsg.id,
+        message_id: joinedMsg.message_id,
+        sender_type: joinedMsg.sender_type,
+        conversation_id: joinedMsg.conversation_id,
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const conv = Array.isArray(joinedMsg.conversations) ? joinedMsg.conversations[0] : (joinedMsg.conversations as any);
+      if (conv) {
+        conversation = {
+          id: conv.id,
+          account_id: conv.account_id,
+          contact_id: conv.contact_id,
+        };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const contact = Array.isArray(conv.contacts) ? conv.contacts[0] : (conv.contacts as any);
+        if (contact?.phone) {
+          phone = contact.phone;
+        }
       }
+    }
 
-      // 2. Match by whatsapp_message_id column (used by Meta provider)
-      {
-        const { data } = await client
-          .from('messages')
-          .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
-          .eq('whatsapp_message_id', message_id)
-          .maybeSingle();
-        if (data) { targetMessage = data; break; }
-      }
+    // 2. Fallback: if not found via joined query or missing conversation/phone, query step-by-step
+    if (!targetMessage) {
+      const baseQuery = admin.from('messages').select('id, message_id, sender_type, conversation_id');
+      const { data: rawMsg } = isUuid
+        ? await baseQuery.eq('id', message_id).maybeSingle()
+        : await baseQuery.eq('message_id', message_id).maybeSingle();
 
-      // 3. Match by message_id column (used by Evolution API provider)
-      {
-        const { data } = await client
-          .from('messages')
-          .select('id, whatsapp_message_id, message_id, sender_type, conversation_id')
-          .eq('message_id', message_id)
-          .maybeSingle();
-        if (data) { targetMessage = data; break; }
+      if (rawMsg) {
+        targetMessage = rawMsg;
       }
     }
 
@@ -106,26 +120,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Message not found' }, { status: 404 });
     }
 
-    // Prefer whatsapp_message_id (Meta) or message_id (Evolution), fallback to internal UUID id
-    const waMsgId = targetMessage.whatsapp_message_id || targetMessage.message_id || targetMessage.id;
-
-    if (!waMsgId) {
-      return NextResponse.json(
-        { error: 'Cannot react to a message that has not been sent to WhatsApp' },
-        { status: 400 },
-      );
-    }
-
-    // Query conversation — try user client first, then admin
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let conversation: any = null;
-    for (const client of clients) {
-      const { data } = await client
+    if (!conversation) {
+      const { data: conv } = await admin
         .from('conversations')
         .select('id, account_id, contact_id')
         .eq('id', targetMessage.conversation_id)
         .maybeSingle();
-      if (data) { conversation = data; break; }
+
+      if (conv) {
+        conversation = conv;
+      }
     }
 
     if (!conversation) {
@@ -135,16 +139,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Query contact phone
-    let phone: string | undefined;
-    if (conversation.contact_id) {
-      for (const client of clients) {
-        const { data: contact } = await client
-          .from('contacts')
-          .select('phone')
-          .eq('id', conversation.contact_id)
-          .maybeSingle();
-        if (contact?.phone) { phone = contact.phone; break; }
+    if (!phone && conversation.contact_id) {
+      const { data: contact } = await admin
+        .from('contacts')
+        .select('phone')
+        .eq('id', conversation.contact_id)
+        .maybeSingle();
+      if (contact?.phone) {
+        phone = contact.phone;
       }
     }
 
@@ -155,7 +157,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const admin = supabaseAdmin();
+    const waMsgId = targetMessage.message_id || targetMessage.id;
+    if (!waMsgId) {
+      return NextResponse.json(
+        { error: 'Cannot react to a message that has not been sent to WhatsApp' },
+        { status: 400 },
+      );
+    }
+
     const { data: config } = await admin
       .from('whatsapp_config')
       .select('*')
@@ -189,8 +198,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Mirror reaction into DB
-    const { data: existingReaction } = await supabase
+    // Mirror reaction into DB using admin client to ensure consistency
+    const { data: existingReaction } = await admin
       .from('message_reactions')
       .select('id')
       .eq('message_id', targetMessage.id)
@@ -200,18 +209,18 @@ export async function POST(request: Request) {
 
     if (emoji === '') {
       if (existingReaction) {
-        await supabase
+        await admin
           .from('message_reactions')
           .delete()
           .eq('id', existingReaction.id);
       }
     } else if (existingReaction) {
-      await supabase
+      await admin
         .from('message_reactions')
         .update({ emoji })
         .eq('id', existingReaction.id);
     } else {
-      await supabase.from('message_reactions').insert({
+      await admin.from('message_reactions').insert({
         message_id: targetMessage.id,
         conversation_id: targetMessage.conversation_id,
         actor_type: 'agent',

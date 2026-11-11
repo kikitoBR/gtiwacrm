@@ -259,7 +259,12 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
     const keyPlain = { remoteJid: cleanPhone, fromMe, id: args.targetMessageId }
 
     const payloads = [
-      // Official Evolution API schema from documentation (https://docs.evolutionfoundation.com.br/evolution-api/send-reaction#send-reaction)
+      // Standard Evolution API schema { key, reaction }
+      {
+        key,
+        reaction: args.emoji,
+      },
+      // Documentation schema { reactionMessage, reactionKey }
       {
         reactionMessage: args.emoji,
         reactionKey: key,
@@ -273,10 +278,6 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
       },
       {
         number: cleanPhone,
-        reaction: args.emoji,
-        key,
-      },
-      {
         reaction: args.emoji,
         key,
       },
