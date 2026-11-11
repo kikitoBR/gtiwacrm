@@ -1365,7 +1365,13 @@ export function MessageThread({
                         message={msg}
                         onReply={() => handleStartReply(msg)}
                         onReact={(emoji) => {
-                          if (emoji) void postReaction(msg.id, emoji);
+                          const own = msgReactions?.find(
+                            (r) =>
+                              r.actor_type === "agent" &&
+                              r.actor_id === user?.id,
+                          );
+                          const next = own?.emoji === emoji ? "" : emoji;
+                          void postReaction(msg.id, next);
                         }}
                         onDelete={handleDeleteMessage}
                         onEdit={handleEditMessage}
