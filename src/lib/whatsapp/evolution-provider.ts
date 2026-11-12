@@ -585,6 +585,51 @@ export class EvolutionWhatsAppProvider implements WhatsAppProvider {
           this.lidCache.set(cleanedLid, result)
           return result
         }
+
+        // Fallback 1: check messages in Evolution API to extract remoteJidAlt
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const msgData = (await this.request('/chat/findMessages', {
+            where: { key: { remoteJid: lidJid.includes('@lid') ? lidJid : `${cleanedLid}@lid` } },
+            limit: 1,
+          })) as any
+          const rec = msgData?.messages?.records?.[0] || msgData?.[0]
+          const altJid = rec?.key?.remoteJidAlt || rec?.remoteJidAlt
+          if (altJid && typeof altJid === 'string' && !altJid.includes('@lid')) {
+            const extractedPhone = this.cleanJidToDigits(altJid)
+            if (extractedPhone && extractedPhone.length >= 8 && extractedPhone.length <= 13) {
+              const resName = name || (rec?.pushName as string) || undefined
+              const resPic = picture || undefined
+              const result = { phone: extractedPhone, name: resName, picture: resPic }
+              this.lidCache.set(cleanedLid, result)
+              return result
+            }
+          }
+        } catch {
+          /* ignore findMessages fallback */
+        }
+
+        // Fallback 2: check chats in Evolution API to extract remoteJidAlt
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const chatData = (await this.request('/chat/findChats', {
+            where: { remoteJid: lidJid.includes('@lid') ? lidJid : `${cleanedLid}@lid` },
+          })) as any
+          const chat = Array.isArray(chatData) ? chatData[0] : chatData
+          const altJid = chat?.lastMessage?.key?.remoteJidAlt || chat?.remoteJidAlt
+          if (altJid && typeof altJid === 'string' && !altJid.includes('@lid')) {
+            const extractedPhone = this.cleanJidToDigits(altJid)
+            if (extractedPhone && extractedPhone.length >= 8 && extractedPhone.length <= 13) {
+              const resName = name || (chat?.pushName as string) || undefined
+              const resPic = picture || (chat?.profilePicUrl as string) || undefined
+              const result = { phone: extractedPhone, name: resName, picture: resPic }
+              this.lidCache.set(cleanedLid, result)
+              return result
+            }
+          }
+        } catch {
+          /* ignore findChats fallback */
+        }
       }
     } catch (err) {
       console.warn(`[evolution-provider] Failed to resolve LID ${lidJid}:`, err)

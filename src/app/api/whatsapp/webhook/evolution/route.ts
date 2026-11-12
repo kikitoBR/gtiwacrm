@@ -207,7 +207,25 @@ export async function POST(request: Request) {
       }
 
       const isGroup = key.remoteJid.includes('@g.us')
-      const senderPhone = isGroup ? key.remoteJid : key.remoteJid.split('@')[0]
+
+      // Resolve LID (Linked ID) JID to actual phone number
+      const rawJid = key.remoteJid || ''
+      const altJid =
+        key.remoteJidAlt ||
+        item.remoteJidAlt ||
+        data?.remoteJidAlt ||
+        (key.participantAlt ? key.participantAlt : null) ||
+        (item.participantAlt ? item.participantAlt : null) ||
+        null
+
+      let effectiveJid = rawJid
+      if (rawJid.includes('@lid') && altJid && altJid.includes('@s.whatsapp.net')) {
+        effectiveJid = altJid
+      } else if (!isGroup && altJid && !altJid.includes('@lid')) {
+        effectiveJid = altJid
+      }
+
+      let senderPhone = isGroup ? rawJid : effectiveJid.split('@')[0]
 
       let explicitGroupName =
         item.groupName ||
@@ -224,27 +242,50 @@ export async function POST(request: Request) {
         data?.pictureUrl ||
         null
 
+      let evoProvider: EvolutionWhatsAppProvider | null = null
       if (config.evolution_api_url && config.evolution_api_key) {
         try {
           const rawApiKey = decrypt(config.evolution_api_key as string)
           if (rawApiKey) {
-            const provider = new EvolutionWhatsAppProvider(
+            evoProvider = new EvolutionWhatsAppProvider(
               config.evolution_api_url as string,
               rawApiKey,
               instance
             )
-            if (isGroup && !explicitGroupName) {
-              const groupInfo = await provider.getGroupInfo(senderPhone)
-              if (groupInfo?.subject) {
-                explicitGroupName = groupInfo.subject
-              }
-              if (groupInfo?.pictureUrl) {
-                avatarUrl = groupInfo.pictureUrl
-              }
+          }
+        } catch {
+          /* ignore decrypt errors */
+        }
+      }
+
+      // If non-group sender is still an unresolved LID, query Evolution API to resolve it to a real phone number
+      if (!isGroup && evoProvider && (rawJid.includes('@lid') || senderPhone.length > 13)) {
+        try {
+          const resolved = await evoProvider.resolveLidToPhone(rawJid)
+          if (resolved?.phone) {
+            senderPhone = resolved.phone
+            if (!avatarUrl && resolved.picture) {
+              avatarUrl = resolved.picture
             }
-            if (!avatarUrl) {
-              avatarUrl = await provider.getProfilePictureUrl(senderPhone)
+          }
+        } catch {
+          /* ignore LID resolution errors */
+        }
+      }
+
+      if (evoProvider) {
+        try {
+          if (isGroup && !explicitGroupName) {
+            const groupInfo = await evoProvider.getGroupInfo(senderPhone)
+            if (groupInfo?.subject) {
+              explicitGroupName = groupInfo.subject
             }
+            if (groupInfo?.pictureUrl) {
+              avatarUrl = groupInfo.pictureUrl
+            }
+          }
+          if (!avatarUrl) {
+            avatarUrl = await evoProvider.getProfilePictureUrl(senderPhone)
           }
         } catch {
           /* ignore fetch errors */
