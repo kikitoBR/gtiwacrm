@@ -252,6 +252,25 @@ export async function POST(request: Request) {
             { status: 400 }
           )
         }
+
+        // Proactively enforce optimal instance settings (alwaysOnline and syncFullHistory)
+        try {
+          await fetch(`${finalApiUrl.replace(/\/$/, '')}/settings/set/${rawInstanceName}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', apikey: rawApiKey },
+            body: JSON.stringify({
+              rejectCall: false,
+              msgCall: '',
+              groupsIgnore: false,
+              alwaysOnline: true,
+              readMessages: false,
+              readStatus: false,
+              syncFullHistory: true,
+            }),
+          })
+        } catch {
+          /* ignore settings update error */
+        }
       } catch (err: unknown) {
         const errorObj = err as Error
         console.warn('Could not contact Evolution API during validation:', errorObj?.message)
